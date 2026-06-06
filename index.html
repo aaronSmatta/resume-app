@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Resume — Remember What Matters</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+    input, textarea, select { font-family: inherit; }
+    input:focus, textarea:focus, select:focus { outline: none; }
+    textarea { resize: vertical; }
+    .modal-bg { animation: fadeBg 0.15s ease; }
+    .modal-box { animation: slideUp 0.18s ease; }
+    @keyframes fadeBg { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .person-row { transition: background 0.1s; }
+    button { font-family: inherit; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef } = React;
+
+/* ── Utils ────────────────────────────────────────────────────────────────── */
+const uid = () => Math.random().toString(36).slice(2, 10);
+
+const fmt = (ds) => {
+  if (!ds) return '';
+  return new Date(ds + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+const fmtBday = (ds) => {
+  if (!ds) return '';
+  return new Date(ds + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+};
+const daysSince = (ds) => {
+  if (!ds) return Infinity;
+  return Math.floor((Date.now() - new Date(ds + 'T12:00:00')) / 86400000);
+};
+const initials = (name = '') => name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2) || '?';
+const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#14b8a6','#f97316'];
+const avatarColor = (name='') => COLORS[name.charCodeAt(0) % COLORS.length] || COLORS[0];
+const lastConvDate = (p) => p.conversations?.length
+  ? [...p.conversations].sort((a,b) => b.date.localeCompare(a.date))[0].date
+  : null;
+const getStatus = (p) => {
+  if (!p.followUpEnabled) return 'off';
+  const last = lastConvDate(p);
+  if (!last) return 'new';
+  const d = daysSince(last), t = p.followUpDays || 60;
+  if (d > t) return 'overdue';
+  if (d > t * 0.75) return 'soon';
+  return 'ok';
+};
+const STATUS_COLOR = { off:'#d1d5db', new:'#60a5fa', ok:'#34d399', soon:'#fbbf24', overdue:'#f87171' };
+const STATUS_LABEL = { off:'', new:'New contact', ok:'Up to date', soon:'Follow up soon', overdue:'Overdue — reach out!' };
+
+const daysUntilBirthday = (birthdayStr) => {
+  if (!birthdayStr) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const bday = new Date(birthdayStr + 'T12:00:00');
+  let next = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
+  if (next < today) next = new Date(today.getFullYear()+1, bday.getMonth(), bday.getDate());
+  return Math.floor((next - today) / 86400000);
+};
+
+/* ── Resume Brief Generator ───────────────────────────────────────────────── */
+const buildResumeBrief = (person) => {
+  const sorted = [...(person.conversations||[])].sort((a,b)=>b.date.localeCompare(a.date));
+  if (!sorted.length) return null;
+
+  const latest = sorted[0];
+  const daysAgo = daysSince(latest.date);
+  const firstName = person.name.split(' ')[0];
+
+  // Human-readable time since last chat
+  let timeStr;
+  if (daysAgo === 0) timeStr = 'today';
+  else if (daysAgo === 1) timeStr = 'yesterday';
+  else if (daysAgo < 7) timeStr = `${daysAgo} days ago`;
+  else if (daysAgo < 14) timeStr = 'last week';
+  else if (daysAgo < 30) timeStr = `${Math.round(daysAgo/7)} weeks ago`;
+  else if (daysAgo < 50) timeStr = 'about a month ago';
+  else if (daysAgo < 75) timeStr = 'about 6 weeks ago';
+  else if (daysAgo < 365) timeStr = `${Math.round(daysAgo/30)} months ago`;
+  else timeStr = 'over a year ago';
+
+  // Build synopsis: where + when + what was on their mind
+  const lines = [];
+  const where = latest.location ? ` at ${latest.location}` : '';
+  lines.push(`You last connected ${timeStr}${where}.`);
+
+  if (latest.insights) {
+    // Take the first sentence/clause that's substantive
+    const sentences = latest.insights.split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>15);
+    if (sentences[0]) {
+      const snippet = sentences[0].length > 120 ? sentences[0].slice(0,117)+'…' : sentences[0];
+      lines.push(snippet.endsWith('.') || snippet.endsWith('…') ? snippet : snippet + '.');
+    }
+  }
+
+  // Count open items across the last 2 conversations
+  const recentConvs = sorted.slice(0, 2);
+  const openQs = recentConvs.flatMap(c=>c.openQuestions||[]);
+  const followUps = recentConvs.flatMap(c=>c.followUps||[]);
+  const totalOpen = openQs.length + followUps.length;
+  if (totalOpen > 0) {
+    lines.push(`There ${totalOpen===1?'is':'are'} ${totalOpen} open ${totalOpen===1?'item':'items'} to pick back up on.`);
+  }
+
+  // Pick-up items: questions first, then follow-ups, max 4 total
+  const pickUpOn = [];
+  openQs.slice(0,3).forEach(q => pickUpOn.push({ type:'question', text:q }));
+  followUps.slice(0, Math.max(1, 4-pickUpOn.length)).forEach(f => pickUpOn.push({ type:'followup', text:f }));
+
+  // Conversation starters (contextual suggestions)
+  const starters = [];
+
+  // Birthday alert
+  if (person.birthday) {
+    const bday = new Date(person.birthday + 'T12:00:00');
+    const now = new Date();
+    const next = new Date(now.getFullYear(), bday.getMonth(), bday.getDate());
+    if (next < now) next.setFullYear(now.getFullYear()+1);
+    const daysUntil = Math.floor((next-now)/86400000);
+    if (daysUntil <= 21) starters.push(`🎂 Birthday ${daysUntil===0?'is today':daysUntil<=7?'this week':`in ${daysUntil} days`} — wish them a happy one!`);
+  }
+
+  // SO mention
+  if (person.so) {
+    const recentMention = latest.insights?.toLowerCase().includes(person.so.toLowerCase());
+    starters.push(recentMention ? `Ask how ${person.so} is doing — they came up last time.` : `Check in on ${person.so}.`);
+  }
+
+  // Hobbies as natural starters
+  if (person.hobbies?.length) {
+    starters.push(`Catch up on their ${person.hobbies[0]}.`);
+    if (person.hobbies[1] && starters.length < 3) starters.push(`Their interest in ${person.hobbies[1]} could be a good thread.`);
+  }
+
+  // Long-gap suggestion
+  if (daysAgo > 150 && starters.length < 3) starters.push("A lot may have changed — do a broad life update first.");
+
+  // Suggest a topic you've talked about before but not recently
+  const allTopics = sorted.flatMap(c=>c.topics||[]);
+  const recentTopicSet = new Set(latest.topics||[]);
+  const olderTopics = [...new Set(allTopics.filter(t=>!recentTopicSet.has(t)))];
+  if (olderTopics.length && starters.length < 3) starters.push(`Revisit "${olderTopics[0]}" — a topic from a previous conversation.`);
+
+  return {
+    synopsis: lines.join(' '),
+    pickUpOn: pickUpOn.slice(0,4),
+    starters: starters.slice(0,3),
+    lastDate: latest.date,
+    daysAgo,
+  };
+};
+
+/* ── Sample Data ──────────────────────────────────────────────────────────── */
+const SAMPLE = [
+  {
+    id:'p1', name:'Marcus Chen', role:'Product Manager', company:'Stripe',
+    howMet:'SaaStr Annual 2024', hometown:'San Francisco (grew up in Taipei)',
+    so:'Diana', birthday:'1988-06-22', hobbies:['surfing','photography','coffee brewing'],
+    groups:['Startup','SF Network'],
+    followUpEnabled:true, followUpDays:45, createdAt:'2024-03-10',
+    conversations:[
+      { id:'c1', date:'2025-11-10', location:'Blue Bottle Coffee, SF',
+        topics:['AI in fintech','career pivot','team building'],
+        insights:"Considering leaving Stripe to build in AI payments. Frustrated with slow decision-making at scale. Really energized by LLMs + financial infrastructure. Diana just got promoted at her law firm.",
+        openQuestions:['Did he end up talking to the YC partner he mentioned?','What happened with the internal transfer he was weighing?'],
+        followUps:['Send the LLM + payments article I bookmarked','Check in after Q1 2026 to see if he made a move'],
+        notes:'', nextMeeting:'2026-06-20', nextMeetingNote:'Coffee catch-up — check in on the Stripe exit decision' },
+      { id:'c2', date:'2024-03-10', location:'SaaStr Conference',
+        topics:['product strategy','0-to-1'],
+        insights:"Met at a roundtable. Deep B2B SaaS background. Generous sharing his 0-to-1 playbook.",
+        openQuestions:[], followUps:['Connect on LinkedIn'], notes:'Gave a great dim sum rec near Moscone.' }
+    ]
+  },
+  {
+    id:'p2', name:'Priya Nair', role:'Founder & CEO', company:'Korali Health',
+    howMet:'Intro via Jake Robinson', hometown:'Boston (originally Chennai)',
+    so:'Rohan', birthday:'1991-06-28', hobbies:['marathon running','sci-fi novels','South Indian cooking'],
+    groups:['Startup','Health Tech'],
+    followUpEnabled:true, followUpDays:30, createdAt:'2025-08-01',
+    conversations:[
+      { id:'c3', date:'2025-08-01', location:'Zoom',
+        topics:['fundraising','health tech','remote teams'],
+        insights:"Closing Series A. Sharp on GTM. Strong conviction that consumer health needs to be personalized at the genetic level. Rohan runs a design studio. Running her 6th marathon in Chicago this October.",
+        openQuestions:['How did the Series A close?','Did the hospital system partnership come through?'],
+        followUps:['Follow up after Chicago marathon (Oct 2025)','Intro to Lisa at a16z bio'],
+        notes:'', nextMeeting:'2026-07-10', nextMeetingNote:'Zoom — check in on Series A close and hospital partnership' }
+    ]
+  },
+  {
+    id:'p3', name:'Tom Hargreaves', role:'VP Sales', company:'Datadog',
+    howMet:'High school friends', hometown:'Denver, CO',
+    so:'Melissa', birthday:'1987-11-03', hobbies:['skiing','fantasy football','woodworking'],
+    groups:['Personal','Sales'],
+    followUpEnabled:false, followUpDays:90, createdAt:'2023-01-01',
+    conversations:[
+      { id:'c4', date:'2024-06-20', location:'Dinner at Nobu, NYC',
+        topics:['family','career','real estate'],
+        insights:"New baby girl — Emma, born April. Melissa on maternity leave. Tom crushed Q2. Looking at buying in Park Slope. Still wants to do a Whistler ski trip.",
+        openQuestions:[],
+        followUps:['Plan Whistler trip for winter 2025','Send baby gift for Emma'],
+        notes:'He paid — I owe him one.' }
+    ]
+  }
+];
+
+/* ── Supabase ─────────────────────────────────────────────────────────────── */
+const SUPABASE_URL  = 'https://mjrlpysiunnuaqjryoxp.supabase.co';
+const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qcmxweXNpdW5udWFxanJ5b3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MTU5MDYsImV4cCI6MjA5NjI5MTkwNn0.IC58eBRSREMDz8yM3mrkaSCuUftufgaei7PIh1zHbCk';
+const ROW_ID        = 'main';
+const TABLE         = 'resume_data';
+
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const loadFromCloud = async () => {
+  const { data, error } = await db.from(TABLE).select('data').eq('id', ROW_ID).maybeSingle();
+  if (error) throw error;
+  return data ? data.data : null;
+};
+
+const persistToCloud = async (people) => {
+  const { error } = await db.from(TABLE).upsert({ id: ROW_ID, data: people });
+  if (error) console.warn('Save error:', error.message);
+};
+
+/* ── Icons ────────────────────────────────────────────────────────────────── */
+const IC = {
+  search: 'M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z',
+  plus: 'M12 5v14M5 12h14',
+  x: 'M18 6 6 18M6 6l12 12',
+  edit: 'M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z',
+  trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6',
+  bell: 'M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0',
+  back: 'm15 18-6-6 6-6',
+  chevR: 'm9 18 6-6-6-6',
+  chevD: 'm6 9 6 6 6-6',
+  pin: 'M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0zM12 10m-3 0a3 3 0 1 0 6 0 3 3 0 0 0-6 0',
+  msg: 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+  user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+  pen: 'M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z',
+};
+
+const Svg = ({ d, size=16, color='currentColor', style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+    {d.includes('M') && d.split('M').filter(Boolean).map((seg,i) => <path key={i} d={'M'+seg} />)}
+  </svg>
+);
+// Better: just render as single path
+const Icon = ({ name, size=16, color='currentColor', style }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
+    <path d={IC[name]} />
+  </svg>
+);
+
+/* ── Shared UI ────────────────────────────────────────────────────────────── */
+const Label = ({ children }) => (
+  <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>{children}</div>
+);
+
+const Input = ({ style, ...props }) => (
+  <input style={{ width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color:'#111827', background:'white', ...style }} {...props} />
+);
+
+const Textarea = ({ style, ...props }) => (
+  <textarea style={{ width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color:'#111827', lineHeight:'1.55', ...style }} {...props} />
+);
+
+const Btn = ({ variant='primary', style, children, ...props }) => {
+  const base = { padding:'9px 18px', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6, border:'none', transition:'opacity 0.1s' };
+  const styles = {
+    primary: { background:'#6366f1', color:'white' },
+    secondary: { background:'white', color:'#374151', border:'1px solid #e5e7eb' },
+    ghost: { background:'transparent', color:'#6b7280', border:'none', padding:'6px 10px', fontWeight:500 },
+  };
+  return <button style={{ ...base, ...styles[variant], ...style }} {...props}>{children}</button>;
+};
+
+/* ── TagInput ─────────────────────────────────────────────────────────────── */
+const TagInput = ({ tags=[], onChange, placeholder='Add, press Enter...' }) => {
+  const [val, setVal] = useState('');
+  const add = () => { const t = val.trim(); if (t && !tags.includes(t)) onChange([...tags, t]); setVal(''); };
+  return (
+    <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', padding:'7px 10px', border:'1px solid #e5e7eb', borderRadius:8, background:'white', minHeight:40 }}>
+      {tags.map(t => (
+        <span key={t} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', background:'#eef2ff', color:'#4f46e5', borderRadius:99, fontSize:13 }}>
+          {t}
+          <button onClick={() => onChange(tags.filter(x=>x!==t))} style={{ background:'none', border:'none', cursor:'pointer', color:'#6366f1', lineHeight:1, fontSize:16, padding:0, marginLeft:1 }}>×</button>
+        </span>
+      ))}
+      <input value={val} onChange={e=>setVal(e.target.value)}
+        onKeyDown={e=>{ if(e.key==='Enter'||e.key===','){e.preventDefault();add();} }}
+        onBlur={add}
+        placeholder={tags.length ? '' : placeholder}
+        style={{ border:'none', outline:'none', flex:1, minWidth:80, fontSize:14, background:'transparent', color:'#374151' }} />
+    </div>
+  );
+};
+
+/* ── BulletListInput ──────────────────────────────────────────────────────── */
+const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...' }) => {
+  const [val, setVal] = useState('');
+  const add = () => { const t = val.trim(); if (t) { onChange([...items, t]); setVal(''); } };
+  return (
+    <div style={{ border:'1px solid #e5e7eb', borderRadius:8, overflow:'hidden' }}>
+      {items.map((item, i) => (
+        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', background:'white', borderBottom:'1px solid #f3f4f6' }}>
+          <span style={{ color:'#9ca3af', marginTop:3, flexShrink:0, fontSize:12 }}>•</span>
+          <span style={{ flex:1, fontSize:14, color:'#374151', lineHeight:'1.45' }}>{item}</span>
+          <button onClick={() => onChange(items.filter((_,j)=>j!==i))}
+            style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:0, flexShrink:0, marginTop:2 }}
+            onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
+            onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+            <Icon name="x" size={13} color="currentColor" />
+          </button>
+        </div>
+      ))}
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', background:'#fafafa' }}>
+        <span style={{ color:'#d1d5db', fontSize:16, flexShrink:0 }}>+</span>
+        <input value={val} onChange={e=>setVal(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter'){e.preventDefault();add();} }}
+          placeholder={placeholder}
+          style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'#6b7280' }} />
+      </div>
+    </div>
+  );
+};
+
+/* ── Toggle ───────────────────────────────────────────────────────────────── */
+const Toggle = ({ on, onChange }) => (
+  <button onClick={() => onChange(!on)} style={{ width:40, height:22, borderRadius:11, background:on?'#6366f1':'#d1d5db', border:'none', cursor:'pointer', position:'relative', transition:'background 0.2s', flexShrink:0 }}>
+    <span style={{ position:'absolute', top:2, left:on?20:2, width:18, height:18, borderRadius:'50%', background:'white', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.15)' }} />
+  </button>
+);
+
+/* ── Avatar ───────────────────────────────────────────────────────────────── */
+const Avatar = ({ name, size=40 }) => (
+  <div style={{ width:size, height:size, borderRadius:'50%', background:avatarColor(name), color:'white', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, fontSize:size*0.34, flexShrink:0, userSelect:'none' }}>
+    {initials(name)}
+  </div>
+);
+
+/* ── Person Modal ─────────────────────────────────────────────────────────── */
+const PersonModal = ({ person, onSave, onClose }) => {
+  const blank = { id:uid(), name:'', role:'', company:'', howMet:'', hometown:'', so:'', birthday:'', hobbies:[], groups:[], followUpEnabled:true, followUpDays:60, createdAt:new Date().toISOString().slice(0,10), conversations:[] };
+  const [f, setF] = useState(person || blank);
+  const set = (k,v) => setF(prev=>({...prev,[k]:v}));
+  const isEdit = !!person?.id;
+  const valid = f.name.trim().length > 0;
+
+  return (
+    <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box" style={{ background:'white', borderRadius:16, width:'100%', maxWidth:520, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit contact' : 'Add new contact'}</h2>
+            <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>Fill in what you know — you can always add more later</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+        </div>
+
+        <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
+          <div>
+            <Label>Name *</Label>
+            <Input value={f.name} onChange={e=>set('name',e.target.value)} placeholder="Full name" autoFocus />
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div><Label>Role</Label><Input value={f.role} onChange={e=>set('role',e.target.value)} placeholder="e.g. Product Manager" /></div>
+            <div><Label>Company</Label><Input value={f.company} onChange={e=>set('company',e.target.value)} placeholder="e.g. Stripe" /></div>
+          </div>
+          <div>
+            <Label>How we met</Label>
+            <Input value={f.howMet} onChange={e=>set('howMet',e.target.value)} placeholder="e.g. SaaStr 2024, intro from Jake..." />
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div><Label>Hometown / from</Label><Input value={f.hometown} onChange={e=>set('hometown',e.target.value)} placeholder="e.g. Denver, CO" /></div>
+            <div><Label>Significant other</Label><Input value={f.so} onChange={e=>set('so',e.target.value)} placeholder="Name" /></div>
+          </div>
+          <div>
+            <Label>Birthday</Label>
+            <Input type="date" value={f.birthday} onChange={e=>set('birthday',e.target.value)} />
+          </div>
+          <div>
+            <Label>Groups</Label>
+            <TagInput tags={f.groups||[]} onChange={v=>set('groups',v)} placeholder="e.g. Work, College, Investors… press Enter" />
+          </div>
+          <div>
+            <Label>Interests & hobbies</Label>
+            <TagInput tags={f.hobbies} onChange={v=>set('hobbies',v)} placeholder="Type hobby, press Enter..." />
+          </div>
+          <div style={{ padding:'14px 16px', background:'#f9fafb', borderRadius:10, border:'1px solid #f0f0f0' }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: f.followUpEnabled ? 12 : 0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <Icon name="bell" size={15} color="#6b7280" />
+                <span style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Follow-up reminder</span>
+              </div>
+              <Toggle on={f.followUpEnabled} onChange={v=>set('followUpEnabled',v)} />
+            </div>
+            {f.followUpEnabled && (
+              <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:14, color:'#6b7280' }}>
+                <span>Remind me if I haven't talked in</span>
+                <input type="number" value={f.followUpDays} min={1}
+                  onChange={e=>set('followUpDays', parseInt(e.target.value)||30)}
+                  style={{ width:56, padding:'4px 8px', border:'1px solid #e5e7eb', borderRadius:6, fontSize:14, textAlign:'center' }} />
+                <span>days</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ padding:'14px 24px', borderTop:'1px solid #f3f4f6', display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => valid && onSave(f)} style={{ opacity: valid ? 1 : 0.5, cursor: valid ? 'pointer' : 'default' }}>
+            {isEdit ? 'Save changes' : 'Add contact'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Conversation Modal ───────────────────────────────────────────────────── */
+const ConvModal = ({ conv, personName, onSave, onClose }) => {
+  const blank = { id:uid(), date:new Date().toISOString().slice(0,10), location:'', topics:[], insights:'', openQuestions:[], followUps:[], notes:'', nextMeeting:'', nextMeetingNote:'' };
+  const [f, setF] = useState(conv || blank);
+  const set = (k,v) => setF(prev=>({...prev,[k]:v}));
+  const isEdit = !!conv?.id;
+
+  return (
+    <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box" style={{ background:'white', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit conversation' : 'Log a conversation'}</h2>
+            {personName && <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>with {personName}</p>}
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+        </div>
+
+        <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:18 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
+            <div>
+              <Label>Date</Label>
+              <Input type="date" value={f.date} onChange={e=>set('date',e.target.value)} />
+            </div>
+            <div>
+              <Label>Location / medium</Label>
+              <Input value={f.location} onChange={e=>set('location',e.target.value)} placeholder="e.g. Zoom, Blue Bottle Coffee..." />
+            </div>
+          </div>
+
+          <div>
+            <Label>Topics & themes</Label>
+            <TagInput tags={f.topics} onChange={v=>set('topics',v)} placeholder="Add topic, press Enter..." />
+          </div>
+
+          <div>
+            <Label>Key insights & takeaways</Label>
+            <Textarea value={f.insights} onChange={e=>set('insights',e.target.value)}
+              placeholder="What did you learn? What stood out? Any personal updates they shared..."
+              style={{ minHeight:90 }} />
+          </div>
+
+          <div>
+            <Label>Open questions</Label>
+            <p style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>Things you want to ask or find out next time</p>
+            <BulletList items={f.openQuestions} onChange={v=>set('openQuestions',v)} placeholder="Add a question..." />
+          </div>
+
+          <div>
+            <Label>Follow-ups & upcoming events</Label>
+            <p style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>Things to do, send, or check back on</p>
+            <BulletList items={f.followUps} onChange={v=>set('followUps',v)} placeholder="Add follow-up..." />
+          </div>
+
+          <div>
+            <Label>Other notes</Label>
+            <Textarea value={f.notes} onChange={e=>set('notes',e.target.value)}
+              placeholder="Anything else worth remembering..."
+              style={{ minHeight:56 }} />
+          </div>
+
+          <div style={{ padding:'12px 14px', background:'#f5f3ff', borderRadius:8, border:'1px solid #e0e7ff' }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>📅 Next planned contact</p>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
+              <div>
+                <Label>Date</Label>
+                <Input type="date" value={f.nextMeeting||''} onChange={e=>set('nextMeeting',e.target.value)} style={{ background:'white' }} />
+              </div>
+              <div>
+                <Label>Note</Label>
+                <Input value={f.nextMeetingNote||''} onChange={e=>set('nextMeetingNote',e.target.value)}
+                  placeholder="e.g. Coffee, Zoom call, conference…" style={{ background:'white' }} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ padding:'14px 24px', borderTop:'1px solid #f3f4f6', display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => onSave(f)}>
+            {isEdit ? 'Save changes' : '▶ Log conversation'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Conversation Card ────────────────────────────────────────────────────── */
+const ConvCard = ({ conv, onEdit, onDelete }) => {
+  const [open, setOpen] = useState(false);
+  const hasBody = conv.insights || conv.openQuestions?.length || conv.followUps?.length || conv.notes;
+
+  return (
+    <div style={{ border:'1px solid #f0f0f0', borderRadius:10, overflow:'hidden', marginBottom:10, background:'white', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+      <div style={{ padding:'12px 14px', cursor: hasBody ? 'pointer' : 'default' }}
+        onClick={() => hasBody && setOpen(o=>!o)}>
+        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+          <div style={{ flex:1 }}>
+            <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:8, marginBottom: conv.topics?.length ? 7 : 0 }}>
+              <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>{fmt(conv.date)}</span>
+              {conv.location && (
+                <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:12, color:'#9ca3af' }}>
+                  <Icon name="pin" size={11} color="#9ca3af" />{conv.location}
+                </span>
+              )}
+            </div>
+            {conv.topics?.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+                {conv.topics.map(t => (
+                  <span key={t} style={{ padding:'2px 8px', background:'#f3f4f6', borderRadius:99, fontSize:12, color:'#6b7280' }}>{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:2, flexShrink:0 }}>
+            <button onClick={e=>{e.stopPropagation();onEdit(conv);}}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'4px 5px', borderRadius:6 }}
+              onMouseEnter={e=>e.currentTarget.style.color='#6366f1'}
+              onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+              <Icon name="edit" size={14} color="currentColor" />
+            </button>
+            <button onClick={e=>{e.stopPropagation();onDelete(conv.id);}}
+              style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'4px 5px', borderRadius:6 }}
+              onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
+              onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+              <Icon name="trash" size={14} color="currentColor" />
+            </button>
+            {hasBody && (
+              <span style={{ color:'#9ca3af', paddingLeft:2 }}>
+                <Icon name={open?'chevD':'chevR'} size={16} color="currentColor" />
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {open && hasBody && (
+        <div style={{ padding:'2px 14px 14px', borderTop:'1px solid #f9fafb' }}>
+          {conv.insights && (
+            <Section label="Insights">
+              <p style={{ fontSize:14, color:'#374151', lineHeight:'1.6', margin:0 }}>{conv.insights}</p>
+            </Section>
+          )}
+          {conv.openQuestions?.length > 0 && (
+            <Section label="Open questions">
+              {conv.openQuestions.map((q,i) => (
+                <p key={i} style={{ fontSize:14, color:'#374151', display:'flex', gap:8, margin:'4px 0', alignItems:'flex-start' }}>
+                  <span style={{ color:'#f59e0b', flexShrink:0, fontWeight:700 }}>?</span>{q}
+                </p>
+              ))}
+            </Section>
+          )}
+          {conv.followUps?.length > 0 && (
+            <Section label="Follow-ups">
+              {conv.followUps.map((f,i) => (
+                <p key={i} style={{ fontSize:14, color:'#374151', display:'flex', gap:8, margin:'4px 0', alignItems:'flex-start' }}>
+                  <span style={{ color:'#6366f1', flexShrink:0 }}>→</span>{f}
+                </p>
+              ))}
+            </Section>
+          )}
+          {conv.notes && (
+            <Section label="Notes">
+              <p style={{ fontSize:14, color:'#6b7280', fontStyle:'italic', margin:0 }}>{conv.notes}</p>
+            </Section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const Section = ({ label, children }) => (
+  <div style={{ marginTop:10 }}>
+    <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:5 }}>{label}</p>
+    {children}
+  </div>
+);
+
+/* ── Resume Brief Card ────────────────────────────────────────────────────── */
+const ResumeCard = ({ person }) => {
+  const brief = buildResumeBrief(person);
+
+  // No conversations yet
+  if (!brief) return (
+    <div style={{ background:'linear-gradient(135deg,#f5f3ff,#eef2ff)', border:'1px solid #c7d2fe', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
+        <span style={{ color:'#6366f1', fontSize:15 }}>▶</span>
+        <span style={{ fontSize:11, fontWeight:800, color:'#4f46e5', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
+      </div>
+      <p style={{ fontSize:14, color:'#6b7280', fontStyle:'italic' }}>Log your first conversation to generate a prep brief.</p>
+    </div>
+  );
+
+  return (
+    <div style={{ background:'linear-gradient(135deg,#f5f3ff,#eef2ff)', border:'1px solid #c7d2fe', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+          <span style={{ color:'#6366f1', fontSize:15 }}>▶</span>
+          <span style={{ fontSize:11, fontWeight:800, color:'#4f46e5', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
+        </div>
+        <span style={{ fontSize:12, color:'#818cf8' }}>{fmt(brief.lastDate)}</span>
+      </div>
+
+      {/* Synopsis paragraph */}
+      <p style={{ fontSize:14, color:'#374151', lineHeight:'1.65', marginBottom: (brief.pickUpOn.length||brief.starters.length) ? 14 : 0 }}>
+        {brief.synopsis}
+      </p>
+
+      {/* Pick up on */}
+      {brief.pickUpOn.length > 0 && (
+        <div style={{ marginBottom: brief.starters.length ? 12 : 0 }}>
+          <p style={{ fontSize:10, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Pick up on</p>
+          {brief.pickUpOn.map((item,i) => (
+            <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:5 }}>
+              <span style={{ fontWeight:700, flexShrink:0, fontSize:13, color: item.type==='question' ? '#f59e0b' : '#6366f1', marginTop:1 }}>
+                {item.type==='question' ? '?' : '→'}
+              </span>
+              <span style={{ fontSize:13, color:'#374151', lineHeight:'1.5' }}>{item.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Conversation starters */}
+      {brief.starters.length > 0 && (
+        <div>
+          <p style={{ fontSize:10, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Conversation starters</p>
+          {brief.starters.map((s,i) => (
+            <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:5 }}>
+              <span style={{ fontSize:13, flexShrink:0, marginTop:1 }}>💡</span>
+              <span style={{ fontSize:13, color:'#374151', lineHeight:'1.5' }}>{s}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ── Person Detail ────────────────────────────────────────────────────────── */
+const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv }) => {
+  const sorted = [...(person.conversations||[])].sort((a,b)=>b.date.localeCompare(a.date));
+  const status = getStatus(person);
+  const allTopics = useMemo(() => {
+    const counts = {};
+    sorted.flatMap(c=>c.topics||[]).forEach(t=>{ counts[t]=(counts[t]||0)+1; });
+    return Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  }, [sorted]);
+
+  return (
+    <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+      {/* Top bar */}
+      <div style={{ padding:'14px 24px', background:'white', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', gap:12 }}>
+        <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, display:'flex', alignItems:'center' }}
+          onMouseEnter={e=>e.currentTarget.style.color='#374151'} onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>
+          <Icon name="back" size={20} color="currentColor" />
+        </button>
+        <Avatar name={person.name} size={44} />
+        <div style={{ flex:1 }}>
+          <h1 style={{ fontSize:20, fontWeight:700, color:'#111827', marginBottom:1 }}>{person.name}</h1>
+          {(person.role||person.company) && (
+            <p style={{ fontSize:13, color:'#6b7280' }}>{[person.role, person.company].filter(Boolean).join(' · ')}</p>
+          )}
+        </div>
+        <div style={{ display:'flex', gap:6 }}>
+          <Btn onClick={onAddConv} style={{ fontSize:13 }}>
+            <Icon name="plus" size={14} color="white" />Log conversation
+          </Btn>
+          <Btn variant="secondary" onClick={()=>onEditPerson(person)} style={{ padding:'8px 10px' }}>
+            <Icon name="edit" size={15} color="#6b7280" />
+          </Btn>
+        </div>
+      </div>
+
+      {/* Scrollable body */}
+      <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+
+        {/* Resume Brief */}
+        <ResumeCard person={person} />
+
+        {/* Status alert */}
+        {person.followUpEnabled && (status==='overdue'||status==='soon'||status==='new') && (
+          <div style={{ padding:'10px 14px', borderRadius:10, marginBottom:16, display:'flex', alignItems:'center', gap:10,
+            background: status==='overdue' ? '#fef2f2' : status==='new' ? '#eff6ff' : '#fffbeb',
+            border: `1px solid ${status==='overdue'?'#fecaca':status==='new'?'#bfdbfe':'#fde68a'}` }}>
+            <span style={{ width:8, height:8, borderRadius:'50%', background:STATUS_COLOR[status], flexShrink:0 }} />
+            <span style={{ fontSize:13, color: status==='overdue'?'#991b1b':status==='new'?'#1e40af':'#92400e' }}>
+              {status==='overdue' && `You haven't connected in ${daysSince(lastConvDate(person))} days — time to reach out!`}
+              {status==='new' && 'New contact — log your first conversation when you get a chance.'}
+              {status==='soon' && `Follow-up reminder in about ${(person.followUpDays||60) - daysSince(lastConvDate(person))} days.`}
+            </span>
+          </div>
+        )}
+
+        {/* About */}
+        <Card title="About">
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 24px' }}>
+            {person.howMet && <InfoPair label="Met at" val={person.howMet} />}
+            {person.hometown && <InfoPair label="From" val={person.hometown} />}
+            {person.so && <InfoPair label="Partner" val={person.so} />}
+            {person.birthday && <InfoPair label="Birthday" val={fmtBday(person.birthday)} />}
+          </div>
+          {person.hobbies?.length > 0 && (
+            <div style={{ marginTop:12 }}>
+              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Interests</p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                {person.hobbies.map(h => (
+                  <span key={h} style={{ padding:'3px 10px', background:'#eef2ff', color:'#4f46e5', borderRadius:99, fontSize:13 }}>{h}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {!person.howMet && !person.hometown && !person.so && !person.birthday && !person.hobbies?.length && (
+            <p style={{ fontSize:14, color:'#9ca3af', fontStyle:'italic' }}>No details yet — edit to add.</p>
+          )}
+        </Card>
+
+        {/* Recurring themes */}
+        {allTopics.length > 1 && (
+          <Card title={`Themes across ${sorted.length} conversations`}>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+              {allTopics.map(([t,n]) => (
+                <span key={t} style={{ padding:'3px 10px', background:'#f3f4f6', borderRadius:99, fontSize:12, color:'#374151' }}>
+                  {t}{n>1 && <span style={{ color:'#9ca3af', fontSize:11, marginLeft:3 }}>×{n}</span>}
+                </span>
+              ))}
+            </div>
+          </Card>
+        )}
+
+        {/* Conversations */}
+        <div>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+            <h3 style={{ fontSize:12, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+              Conversations ({sorted.length})
+            </h3>
+          </div>
+          {sorted.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'36px 20px' }}>
+              <Icon name="msg" size={32} color="#e5e7eb" />
+              <p style={{ marginTop:8, fontSize:14, color:'#9ca3af' }}>No conversations logged yet</p>
+            </div>
+          ) : (
+            sorted.map(c => (
+              <ConvCard key={c.id} conv={c}
+                onEdit={c => onEditConv(c)}
+                onDelete={id => onDeleteConv(person.id, id)} />
+            ))
+          )}
+        </div>
+
+        <div style={{ marginTop:24, paddingTop:16, borderTop:'1px solid #f3f4f6', textAlign:'right' }}>
+          <button onClick={()=>onDeletePerson(person.id)}
+            style={{ fontSize:12, color:'#d1d5db', background:'none', border:'none', cursor:'pointer' }}
+            onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
+            onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+            Delete this contact
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Card = ({ title, children }) => (
+  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', marginBottom:14, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', border:'1px solid #f3f4f6' }}>
+    <h3 style={{ fontSize:11, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>{title}</h3>
+    {children}
+  </div>
+);
+
+const InfoPair = ({ label, val }) => (
+  <div style={{ marginBottom:6 }}>
+    <p style={{ fontSize:11, color:'#9ca3af', marginBottom:1 }}>{label}</p>
+    <p style={{ fontSize:14, color:'#374151' }}>{val}</p>
+  </div>
+);
+
+/* ── Group Chip ───────────────────────────────────────────────────────────── */
+const Chip = ({ active, onClick, children }) => (
+  <button onClick={onClick}
+    style={{ padding:'4px 11px', borderRadius:99, border:'none', cursor:'pointer', fontSize:12,
+      fontWeight: active ? 700 : 500, whiteSpace:'nowrap',
+      background: active ? '#6366f1' : '#f3f4f6',
+      color: active ? 'white' : '#6b7280',
+      transition:'all 0.15s' }}
+    onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='#e5e7eb'; }}
+    onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='#f3f4f6'; }}>
+    {children}
+  </button>
+);
+
+/* ── Deep Search ──────────────────────────────────────────────────────────── */
+const FIELD_PRIORITY = { name:0, company:1, role:2, howMet:3, location:4, topic:5, insights:6, hobbies:7, notes:8, openQuestion:9, followUp:10, hometown:11, so:12 };
+
+const deepSearch = (people, query) => {
+  if (!query.trim()) return [];
+  const q = query.toLowerCase().trim();
+  const results = [];
+
+  for (const person of people) {
+    const raw = [];
+
+    // Profile fields
+    const tryProfile = (field, text, icon) => {
+      if (text?.toLowerCase().includes(q)) raw.push({ field, text, icon });
+    };
+    tryProfile('name', person.name, '👤');
+    tryProfile('company', person.company, '🏢');
+    tryProfile('role', person.role, '💼');
+    tryProfile('howMet', person.howMet, '🤝');
+    tryProfile('hometown', person.hometown, '🏠');
+    if (person.so?.toLowerCase().includes(q)) raw.push({ field:'so', text:`Partner: ${person.so}`, icon:'❤️' });
+    if (person.hobbies?.some(h=>h.toLowerCase().includes(q))) {
+      raw.push({ field:'hobbies', text: person.hobbies.filter(h=>h.toLowerCase().includes(q)).join(', '), icon:'🎯' });
+    }
+
+    // Conversation fields
+    for (const conv of (person.conversations||[])) {
+      const tryConv = (field, text, icon) => {
+        if (!text?.toLowerCase().includes(q)) return;
+        let snippet = text;
+        if (text.length > 85) {
+          const idx = text.toLowerCase().indexOf(q);
+          const start = Math.max(0, idx - 20);
+          const end = Math.min(text.length, idx + q.length + 45);
+          snippet = (start>0?'…':'') + text.slice(start, end) + (end<text.length?'…':'');
+        }
+        raw.push({ field, text: snippet, icon, date: conv.date });
+      };
+      tryConv('location', conv.location, '📍');
+      conv.topics?.forEach(t => { if(t.toLowerCase().includes(q)) raw.push({ field:'topic', text:t, icon:'💬', date:conv.date }); });
+      tryConv('insights', conv.insights, '💡');
+      tryConv('notes', conv.notes, '📝');
+      conv.openQuestions?.forEach(oq => { if(oq.toLowerCase().includes(q)) raw.push({ field:'openQuestion', text:oq, icon:'❓', date:conv.date }); });
+      conv.followUps?.forEach(fu => { if(fu.toLowerCase().includes(q)) raw.push({ field:'followUp', text:fu, icon:'→', date:conv.date }); });
+    }
+
+    if (!raw.length) continue;
+
+    // Sort by priority, deduplicate by field, take top 2
+    raw.sort((a,b)=>(FIELD_PRIORITY[a.field]??99)-(FIELD_PRIORITY[b.field]??99));
+    const seen = new Set();
+    const top = raw.filter(m=>{ if(seen.has(m.field)) return false; seen.add(m.field); return true; }).slice(0,2);
+    results.push({ person, matches: top });
+  }
+
+  // Best-match-first: sort by top match field priority
+  return results.sort((a,b)=>(FIELD_PRIORITY[a.matches[0]?.field]??99)-(FIELD_PRIORITY[b.matches[0]?.field]??99));
+};
+
+// Inline text highlighter — wraps the matched substring in a yellow mark
+const Highlight = ({ text, query }) => {
+  if (!text || !query) return <span>{text}</span>;
+  const q = query.toLowerCase();
+  const idx = text.toLowerCase().indexOf(q);
+  if (idx === -1) return <span>{text}</span>;
+  return (
+    <span>
+      {text.slice(0, idx)}
+      <mark style={{ background:'#fef08a', color:'inherit', borderRadius:2, padding:'0 1px' }}>{text.slice(idx, idx+query.length)}</mark>
+      {text.slice(idx+query.length)}
+    </span>
+  );
+};
+
+/* ── Search Results ───────────────────────────────────────────────────────── */
+const SearchResults = ({ results, query, onSelect, selectedId }) => {
+  if (!results.length) return (
+    <div style={{ padding:'40px 16px', textAlign:'center' }}>
+      <div style={{ fontSize:32, marginBottom:10 }}>🔍</div>
+      <p style={{ fontSize:14, color:'#6b7280', fontWeight:500 }}>No matches for "{query}"</p>
+      <p style={{ fontSize:12, color:'#9ca3af', marginTop:4 }}>Try a location, topic, name, or any detail you remember</p>
+    </div>
+  );
+
+  return (
+    <div style={{ padding:'6px 8px 8px' }}>
+      <p style={{ fontSize:11, color:'#9ca3af', padding:'2px 4px 8px' }}>
+        {results.length} match{results.length!==1?'es':''} found
+      </p>
+      {results.map(({ person, matches }) => {
+        const sel = person.id === selectedId;
+        return (
+          <div key={person.id}
+            onClick={() => onSelect(person.id)}
+            style={{ padding:'10px 11px', borderRadius:10, cursor:'pointer', marginBottom:5,
+              background: sel ? '#eef2ff' : 'white',
+              border: `1px solid ${sel?'#c7d2fe':'#f0f0f0'}`,
+              boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}
+            onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#f9fafb'; }}
+            onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'#eef2ff':'white'; }}>
+
+            {/* Person header */}
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: matches.length ? 7 : 0 }}>
+              <Avatar name={person.name} size={30} />
+              <div style={{ minWidth:0 }}>
+                <p style={{ fontSize:14, fontWeight:600, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  <Highlight text={person.name} query={query} />
+                </p>
+                {(person.role||person.company) && (
+                  <p style={{ fontSize:11, color:'#9ca3af', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                    {[person.role, person.company].filter(Boolean).join(' · ')}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Match reasons */}
+            {matches.map((m, i) => (
+              <div key={i} style={{ display:'flex', gap:6, alignItems:'flex-start', marginTop: i===0 ? 0 : 4,
+                padding:'5px 8px', background: sel ? 'rgba(255,255,255,0.6)' : '#f9fafb', borderRadius:6 }}>
+                <span style={{ fontSize:12, flexShrink:0, lineHeight:'1.5', marginTop:1 }}>{m.icon}</span>
+                <span style={{ fontSize:12, color:'#4b5563', lineHeight:'1.5', flex:1, minWidth:0, wordBreak:'break-word' }}>
+                  <Highlight text={m.text} query={query} />
+                  {m.date && <span style={{ color:'#d1d5db', marginLeft:5, whiteSpace:'nowrap' }}>{fmt(m.date)}</span>}
+                </span>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+/* ── Natural Language Parser ──────────────────────────────────────────────── */
+const parseNaturalInput = (text, people) => {
+  const lower = text.toLowerCase();
+
+  // Match existing person (longer names first to avoid partial matches)
+  let matchedPerson = null;
+  const sortedPeople = [...people].sort((a, b) => b.name.length - a.name.length);
+  for (const p of sortedPeople) {
+    const parts = p.name.split(/\s+/);
+    const checks = [p.name.toLowerCase(), ...parts.filter(n => n.length >= 3).map(n => n.toLowerCase())];
+    if (checks.some(n => lower.includes(n))) { matchedPerson = p; break; }
+  }
+
+  // Extract new person name
+  let newName = '';
+  if (!matchedPerson) {
+    const namePats = [
+      /(?:just )?met\s+(?:with\s+)?([A-Z][a-z]+(?: [A-Z][a-z]+)+)/,
+      /(?:talking|talked|chatting|chatted|caught up|lunch|coffee|dinner|call\s+with|spoke(?:n)?\s+with)\s+with\s+([A-Z][a-z]+(?: [A-Z][a-z]+)+)/,
+      /^([A-Z][a-z]+(?: [A-Z][a-z]+)+)\s*[-–—:,]/,
+      /new\s+contact[:\s]+([A-Z][a-z]+(?: [A-Z][a-z]+)+)/i,
+    ];
+    for (const rx of namePats) {
+      const m = text.match(rx);
+      if (m) { newName = m[1].trim(); break; }
+    }
+  }
+
+  // Intent
+  const hasUpdateKeyword = /^(update\b|add\s+that\b|remember\s+that\b|note\s+that\b|also\s+note\b|fyi\b)/i.test(text.trim());
+  const hasConvKeyword = /\b(talked?|chatted?|caught\s+up|coffee|lunch|dinner|drinks?|zoom|phone\s+call|video\s+call|call|spoke|spoken|met\s+with|had\s+a\s+(?:meeting|chat|call))\b/i.test(text);
+  const intent = hasUpdateKeyword && matchedPerson ? 'update'
+    : matchedPerson ? 'conversation'
+    : newName ? 'new_person'
+    : 'unclear';
+
+  // Date
+  let date = new Date().toISOString().slice(0, 10);
+  let dateLabel = 'today';
+  if (/\byesterday\b/i.test(text)) {
+    const d = new Date(); d.setDate(d.getDate() - 1);
+    date = d.toISOString().slice(0, 10); dateLabel = 'yesterday';
+  } else if (/\blast\s+week\b/i.test(text)) {
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    date = d.toISOString().slice(0, 10); dateLabel = 'last week';
+  } else if (/\b(?:a\s+)?(?:couple|few)\s+(?:days|weeks)\s+ago\b/i.test(text)) {
+    const d = new Date(); d.setDate(d.getDate() - 4);
+    date = d.toISOString().slice(0, 10); dateLabel = 'a few days ago';
+  }
+
+  // Location
+  let location = '';
+  if (/\bon\s+(?:a\s+)?zoom(?:\s+call)?\b/i.test(text)) location = 'Zoom';
+  else if (/\bon\s+(?:a\s+)?(?:phone|video)\s+call\b/i.test(text)) location = 'Phone call';
+  else if (/\bvirtually\b/i.test(text)) location = 'Virtual';
+  else {
+    const locPats = [
+      /\bover\s+(?:coffee|lunch|dinner|drinks?)\s+at\s+([A-Z][A-Za-z'&\s]{2,28?})(?=[,.]|\s+(?:about|we|he|she|they|I|and|to))/i,
+      /\b(?:coffee|lunch|dinner|drinks?)\s+at\s+([A-Z][A-Za-z'&\s]{2,28?})(?=[,.]|\s+(?:about|we|he|she|they|I|and|to))/i,
+      /\bat\s+([A-Z][A-Za-z'&\s]{2,28?})(?=[,.]|\s+(?:about|we|he|she|they|I|and|to|for|over|on|with))/,
+    ];
+    for (const rx of locPats) {
+      const m = text.match(rx);
+      if (m && m[1]) { location = m[1].trim().replace(/\s+$/, ''); break; }
+    }
+  }
+
+  // Topics
+  let topics = [];
+  const topicRx = /(?:talked?\s+about|chatted?\s+about|spoke\s+about|discussed?|went\s+(?:over|through)|covered|touched\s+on|about)\s+([^.!?\n]{4,100})/gi;
+  for (const m of text.matchAll(topicRx)) {
+    m[1].split(/,\s*|\s+and\s+/)
+      .map(s => s.trim().replace(/[.,!?]$/, ''))
+      .filter(s => s.length > 2 && s.length < 60 && !/^(he|she|they|we|his|her|their|the|a|an|it|this|that|which|who|how|what|when|where|why)\b/i.test(s))
+      .slice(0, 3)
+      .forEach(t => topics.push(t));
+  }
+  topics = [...new Set(topics)].slice(0, 6);
+
+  // Company
+  let company = '';
+  const coM = text.match(/\b(?:works?\s+(?:at|for)|joining|joined|left|starting\s+(?:a\s+)?(?:new\s+)?(?:company|startup|firm)\s+(?:called|named)\s+)\s*([A-Z][A-Za-z]+(?:\s+[A-Z][A-Za-z]+)?)/);
+  if (coM) company = coM[1];
+
+  // Role
+  let role = '';
+  const roleM = text.match(/\b(?:she(?:'s|\s+is)?\s+(?:a|an|the)|he(?:'s|\s+is)?\s+(?:a|an|the)|is\s+(?:a|an|the)|works?\s+as\s+(?:a|an))\s+([A-Za-z]+(?:\s+[A-Za-z]+){0,3}?)(?=\s+at|\s+for|[,.]|\s*$)/i);
+  if (roleM) role = roleM[1].trim();
+
+  // Significant other
+  let so = '';
+  const soM = text.match(/\b(?:wife|husband|partner|SO|boyfriend|girlfriend|fianc[ée]|spouse)\s+(?:is\s+|named?\s+)?([A-Z][a-z]+)/i)
+    || text.match(/\bmarried\s+to\s+([A-Z][a-z]+)/i)
+    || text.match(/\b(?:her|his)\s+(?:husband|wife|partner|boyfriend|girlfriend)\s+(?:is\s+)?([A-Z][a-z]+)/i);
+  if (soM) so = soM[1];
+
+  // Hometown
+  let hometown = '';
+  const htM = text.match(/\b(?:from|grew\s+up\s+in|originally\s+from|based\s+in|hometown\s+is)\s+([A-Z][A-Za-z\s,]{2,35?})(?=[.,\n]|$)/i);
+  if (htM) hometown = htM[1].trim().replace(/[.,]$/, '').slice(0, 40);
+
+  // Hobbies
+  let hobbies = [];
+  const hobbyRx = /\b(?:likes?\s+(?:to\s+)?|loves?\s+(?:to\s+)?|is\s+(?:big\s+)?into\s+|enjoys?\s+|passionate\s+about\s+|big\s+(?:fan\s+of|into)\s+|hobbies?\s+(?:include|is|are)\s+)([^.!?\n]{3,60})/gi;
+  for (const m of text.matchAll(hobbyRx)) {
+    m[1].split(/,\s*|\s+and\s+/).map(s => s.trim().replace(/[.,!?]$/, '')).filter(s => s.length > 1 && s.length < 35).forEach(h => hobbies.push(h));
+  }
+  hobbies = [...new Set(hobbies)].slice(0, 5);
+
+  // Open questions
+  let openQuestions = [];
+  const oqRx = /\b(?:not\s+sure|still\s+(?:waiting|wondering)|wondering|need\s+to\s+(?:find\s+out|ask|check|clarify)|want\s+to\s+(?:know|ask|clarify)|curious\s+(?:about|if|whether))\s+([^.!?\n]{5,100})/gi;
+  for (const m of text.matchAll(oqRx)) openQuestions.push(m[1].trim().replace(/[.,]$/, ''));
+  openQuestions = [...new Set(openQuestions)].slice(0, 3);
+
+  // Follow-ups
+  let followUps = [];
+  const fuRx = /\b(?:need\s+to|want\s+to|going\s+to|should|plan\s+to|I'll|will|have\s+to)\s+(?:send|share|intro(?:duce)?|connect|follow\s+up|reach\s+out|check\s+in|look\s+into|get|put\s+together|forward|introduce)\b([^.!?\n]{0,70})/gi;
+  for (const m of text.matchAll(fuRx)) {
+    const action = m[0].trim().replace(/[.,]$/, '').replace(/\s+/g, ' ');
+    if (action.length > 8) followUps.push(action);
+  }
+  followUps = [...new Set(followUps)].slice(0, 3);
+
+  return { intent, matchedPerson, newName, date, dateLabel, location, topics, company, role, so, hometown, hobbies, openQuestions, followUps, insights: text.trim() };
+};
+
+/* ── Quick Capture Components ─────────────────────────────────────────────── */
+const ParseRow = ({ icon, label, value }) => (
+  <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:7 }}>
+    <span style={{ fontSize:13, flexShrink:0, marginTop:1 }}>{icon}</span>
+    <div style={{ minWidth:0 }}>
+      <span style={{ fontSize:10, color:'#9ca3af', display:'block', marginBottom:1, textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:700 }}>{label}</span>
+      <span style={{ fontSize:13, color:'#374151', lineHeight:'1.4', display:'block', wordBreak:'break-word' }}>{value}</span>
+    </div>
+  </div>
+);
+
+const ParsedCard = ({ parsed }) => {
+  const { intent, matchedPerson, newName, date, dateLabel, location, topics, company, role, so, hometown, hobbies, openQuestions, followUps, insights } = parsed;
+  const isOk = intent !== 'unclear';
+  const personName = matchedPerson?.name || newName;
+
+  const headerText = {
+    conversation: `Logging a conversation with ${personName}`,
+    new_person:   `Adding new contact: ${personName}`,
+    update:       `Updating ${personName}'s profile`,
+    unclear:      "Couldn't identify who this is about",
+  }[intent];
+
+  const subText = intent === 'conversation'
+    ? `${dateLabel} · ${location || 'location not specified'}`
+    : (intent === 'new_person' && (role || company))
+      ? [role, company].filter(Boolean).join(' at ')
+      : null;
+
+  return (
+    <div style={{ borderRadius:12, border:`1px solid ${isOk?'#bbf7d0':'#fecaca'}`, background: isOk?'#f0fdf4':'#fef2f2', padding:'14px 16px' }}>
+      <div style={{ display:'flex', gap:10, alignItems:'flex-start', marginBottom:12 }}>
+        <span style={{ fontSize:18, flexShrink:0 }}>{isOk ? '✅' : '⚠️'}</span>
+        <div>
+          <p style={{ fontSize:13, fontWeight:700, color: isOk?'#166534':'#991b1b', lineHeight:'1.3' }}>{headerText}</p>
+          {subText && <p style={{ fontSize:11, color: isOk?'#4b7c59':'#9ca3af', marginTop:2 }}>{subText}</p>}
+        </div>
+      </div>
+
+      {intent === 'unclear' && (
+        <p style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', lineHeight:'1.5' }}>
+          Try starting with the person's name, e.g. "Caught up with Sarah…" or "Just met John Smith at the conference…"
+        </p>
+      )}
+
+      {(intent === 'conversation' || intent === 'new_person') && (
+        <div>
+          {intent === 'conversation' && <>
+            <ParseRow icon="📅" label="Date" value={`${fmt(date)}${dateLabel !== 'today' ? ` (${dateLabel})` : ''}`} />
+            {location && <ParseRow icon="📍" label="Location" value={location} />}
+          </>}
+          {intent === 'new_person' && <>
+            {role && <ParseRow icon="💼" label="Role" value={role} />}
+            {company && <ParseRow icon="🏢" label="Company" value={company} />}
+            {hometown && <ParseRow icon="🏠" label="From" value={hometown} />}
+            {so && <ParseRow icon="❤️" label="Partner" value={so} />}
+            {location && <ParseRow icon="📍" label="Where you met" value={location} />}
+            {hobbies.length > 0 && <ParseRow icon="🎯" label="Interests" value={hobbies.join(', ')} />}
+          </>}
+          {topics.length > 0 && <ParseRow icon="💬" label={intent==='new_person'?'Talked about':'Topics'} value={topics.join(' · ')} />}
+          {followUps.length > 0 && <ParseRow icon="✅" label="Follow-ups" value={followUps.join(' · ')} />}
+          {openQuestions.length > 0 && <ParseRow icon="❓" label="Open questions" value={openQuestions.join(' · ')} />}
+          <ParseRow icon="💡" label="Full notes (saved as-is)" value={insights.length > 130 ? insights.slice(0, 130) + '…' : insights} />
+        </div>
+      )}
+
+      {intent === 'update' && (
+        <div>
+          {role && <ParseRow icon="💼" label="Role → update to" value={role} />}
+          {company && <ParseRow icon="🏢" label="Company → update to" value={company} />}
+          {hometown && <ParseRow icon="🏠" label="Hometown → update to" value={hometown} />}
+          {so && <ParseRow icon="❤️" label="Partner → update to" value={so} />}
+          {hobbies.length > 0 && <ParseRow icon="🎯" label="Add to interests" value={hobbies.join(', ')} />}
+          <ParseRow icon="💡" label="Full note" value={insights.length > 130 ? insights.slice(0, 130) + '…' : insights} />
+        </div>
+      )}
+
+      {isOk && (
+        <p style={{ fontSize:11, color:'#6b7280', marginTop:10, fontStyle:'italic' }}>
+          Your full text is saved as notes. You can edit details anytime from the contact.
+        </p>
+      )}
+    </div>
+  );
+};
+
+const CAPTURE_EXAMPLES = [
+  "Caught up with Marcus yesterday at Blue Bottle. He's seriously thinking about leaving Stripe. Diana just got promoted. Need to send him that payments article.",
+  "Just met Sarah Lee at the TechConf. She's a Product Manager at Meta, originally from Chicago. Her boyfriend is Alex. Into pottery and hiking.",
+  "Had a Zoom call with Priya. The Series A closed at $15M! Hospital partnership fell through but she has a new lead. Following up July 10th.",
+];
+
+const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePersonFields, onClose }) => {
+  const [text, setText] = useState('');
+  const [parsed, setParsed] = useState(null);
+  const [saved, setSaved] = useState(false);
+  const textRef = React.useRef(null);
+
+  React.useEffect(() => { setTimeout(() => textRef.current?.focus(), 50); }, []);
+
+  const handleParse = () => {
+    if (!text.trim()) return;
+    setParsed(parseNaturalInput(text.trim(), people));
+  };
+
+  const handleSave = () => {
+    if (!parsed || parsed.intent === 'unclear') return;
+
+    const conv = {
+      id: uid(), date: parsed.date, location: parsed.location || '',
+      topics: parsed.topics, insights: parsed.insights,
+      openQuestions: parsed.openQuestions, followUps: parsed.followUps,
+      notes: '', nextMeeting: '', nextMeetingNote: '',
+    };
+
+    if (parsed.intent === 'conversation' && parsed.matchedPerson) {
+      onSaveConvToPersonId(parsed.matchedPerson.id, conv);
+    } else if (parsed.intent === 'new_person') {
+      onSavePerson({
+        id: uid(), name: parsed.newName, role: parsed.role || '',
+        company: parsed.company || '', howMet: parsed.location || '',
+        hometown: parsed.hometown || '', so: parsed.so || '',
+        birthday: '', hobbies: parsed.hobbies, groups: [],
+        followUpEnabled: true, followUpDays: 60,
+        createdAt: new Date().toISOString().slice(0, 10),
+        conversations: [conv],
+      });
+    } else if (parsed.intent === 'update' && parsed.matchedPerson) {
+      onUpdatePersonFields(parsed.matchedPerson.id, {
+        role: parsed.role, company: parsed.company,
+        hometown: parsed.hometown, so: parsed.so, hobbies: parsed.hobbies,
+      });
+    }
+
+    setSaved(true);
+    setTimeout(onClose, 1600);
+  };
+
+  const handleReset = () => { setText(''); setParsed(null); };
+
+  const canSave = parsed && parsed.intent !== 'unclear';
+
+  const savedMsg = !parsed ? '' :
+    parsed.intent === 'conversation' ? `Conversation added to ${parsed.matchedPerson?.name}` :
+    parsed.intent === 'new_person' ? `${parsed.newName} added to your contacts` :
+    parsed.intent === 'update' ? `${parsed.matchedPerson?.name}'s profile updated` : 'Saved';
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background:'white', borderRadius:16, width:'100%', maxWidth:580, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.18)' }}>
+
+        {/* Header */}
+        <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexShrink:0 }}>
+          <div>
+            <h2 style={{ fontSize:17, fontWeight:800, color:'#111827', display:'flex', alignItems:'center', gap:8 }}>
+              <Icon name="pen" size={16} color="#6366f1" /> Quick capture
+            </h2>
+            <p style={{ fontSize:12, color:'#9ca3af', marginTop:3 }}>Type what you remember — I'll pull out the key details</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, display:'flex', alignItems:'center' }}>
+            <Icon name="x" size={18} color="currentColor" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex:1, overflowY:'auto', padding:'16px 22px', display:'flex', flexDirection:'column', gap:12 }}>
+          {/* Example pills */}
+          {!parsed && !saved && (
+            <div>
+              <p style={{ fontSize:11, color:'#c4c8d4', marginBottom:7 }}>Need a starting point? Click an example:</p>
+              <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+                {CAPTURE_EXAMPLES.map((ex, i) => (
+                  <button key={i} onClick={() => setText(ex)}
+                    style={{ padding:'8px 12px', background:'#f9fafb', border:'1px solid #f0f0f0', borderRadius:8, fontSize:12, color:'#6b7280', cursor:'pointer', textAlign:'left', lineHeight:'1.45', transition:'all 0.12s' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#f3f4f6'; e.currentTarget.style.borderColor = '#d1d5db'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = '#f9fafb'; e.currentTarget.style.borderColor = '#f0f0f0'; }}>
+                    "{ex.length > 95 ? ex.slice(0, 95) + '…' : ex}"
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Parsed result */}
+          {parsed && !saved && <ParsedCard parsed={parsed} />}
+
+          {/* Success */}
+          {saved && (
+            <div style={{ textAlign:'center', padding:'36px 0' }}>
+              <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
+              <p style={{ fontSize:16, fontWeight:700, color:'#111827' }}>Saved!</p>
+              <p style={{ fontSize:13, color:'#9ca3af', marginTop:5 }}>{savedMsg}</p>
+            </div>
+          )}
+        </div>
+
+        {/* Input + actions */}
+        {!saved && (
+          <div style={{ padding:'14px 22px 20px', borderTop:'1px solid #f3f4f6', flexShrink:0 }}>
+            <textarea ref={textRef} value={text} onChange={e => setText(e.target.value)} rows={4}
+              placeholder={"e.g. \"Caught up with Marcus over coffee yesterday. He's thinking about leaving Stripe. Still waiting to hear from YC. Need to send him the article.\""}
+              style={{ width:'100%', padding:'11px 13px', border:'1px solid #e5e7eb', borderRadius:10, fontSize:13, lineHeight:'1.55', resize:'vertical', color:'#374151', background:'#fafafa', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
+              onFocus={e => e.currentTarget.style.borderColor = '#a5b4fc'}
+              onBlur={e => e.currentTarget.style.borderColor = '#e5e7eb'}
+              onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); parsed ? handleSave() : handleParse(); } }}
+            />
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
+              <span style={{ fontSize:11, color:'#d1d5db' }}>⌘↵ to {parsed ? 'save' : 'parse'}</span>
+              <div style={{ display:'flex', gap:8 }}>
+                {parsed && (
+                  <button onClick={handleReset}
+                    style={{ padding:'7px 14px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#f9fafb'}>
+                    ← Start over
+                  </button>
+                )}
+                {!parsed ? (
+                  <button onClick={handleParse} disabled={!text.trim()}
+                    style={{ padding:'7px 20px', background: text.trim() ? '#6366f1' : '#e5e7eb', color: text.trim() ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: text.trim() ? 'pointer' : 'default', transition:'all 0.15s' }}>
+                    Parse →
+                  </button>
+                ) : (
+                  <button onClick={handleSave} disabled={!canSave}
+                    style={{ padding:'7px 20px', background: canSave ? '#6366f1' : '#e5e7eb', color: canSave ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: canSave ? 'pointer' : 'default' }}>
+                    Save →
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ── Sidebar ──────────────────────────────────────────────────────────────── */
+const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, search, setSearch, sortBy, setSortBy }) => {
+  const [activeGroup, setActiveGroup] = useState(null);
+  const overdueCount = people.filter(p=>getStatus(p)==='overdue').length;
+  const isSearching = search.trim().length > 0;
+
+  // All unique groups sorted alphabetically
+  const allGroups = useMemo(() => {
+    const s = new Set(people.flatMap(p=>p.groups||[]));
+    return [...s].sort();
+  }, [people]);
+
+  const filtered = useMemo(() => {
+    if (isSearching) return [];
+    let list = [...people];
+    if (activeGroup) list = list.filter(p=>p.groups?.includes(activeGroup));
+    if (sortBy==='name') return list.sort((a,b)=>a.name.localeCompare(b.name));
+    if (sortBy==='recent') return list.sort((a,b)=>(lastConvDate(b)||'0').localeCompare(lastConvDate(a)||'0'));
+    if (sortBy==='attention') {
+      const order = { overdue:0, soon:1, new:2, ok:3, off:4 };
+      return list.sort((a,b)=>(order[getStatus(a)]||5)-(order[getStatus(b)]||5));
+    }
+    return list;
+  }, [people, sortBy, isSearching, activeGroup]);
+
+  const searchResults = useMemo(() => {
+    const results = isSearching ? deepSearch(people, search) : [];
+    return activeGroup ? results.filter(r=>r.person.groups?.includes(activeGroup)) : results;
+  }, [people, search, isSearching, activeGroup]);
+
+  return (
+    <div style={{ width:300, flexShrink:0, background:'white', borderRight:'1px solid #f0f0f0', display:'flex', flexDirection:'column', height:'100%' }}>
+      {/* Header */}
+      <div style={{ padding:'18px 16px 12px' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#4f46e5', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginTop:2, letterSpacing:'0.03em' }}>Remember what matters</div>
+          </div>
+          <div style={{ display:'flex', gap:6 }}>
+            <button onClick={onQuickCapture} title="Quick capture"
+              style={{ width:34, height:34, borderRadius:10, background:'#f0f0ff', border:'1px solid #c7d2fe', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s' }}
+              onMouseEnter={e=>{ e.currentTarget.style.background='#e0e7ff'; e.currentTarget.style.transform='scale(1.05)'; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background='#f0f0ff'; e.currentTarget.style.transform='scale(1)'; }}>
+              <Icon name="pen" size={15} color="#6366f1" />
+            </button>
+            <button onClick={onAddPerson} title="Add contact"
+              style={{ width:34, height:34, borderRadius:10, background:'#6366f1', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(99,102,241,0.35)', transition:'transform 0.1s' }}
+              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'}
+              onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+              <Icon name="plus" size={18} color="white" />
+            </button>
+          </div>
+        </div>
+        {/* Search bar */}
+        <div style={{ position:'relative' }}>
+          <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}>
+            <Icon name="search" size={14} color={isSearching?'#6366f1':'#9ca3af'} />
+          </span>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Search names, places, topics…"
+            style={{ width:'100%', padding:'8px 30px 8px 32px', border:`1px solid ${isSearching?'#c7d2fe':'#f0f0f0'}`, borderRadius:8, fontSize:13, background: isSearching?'#f5f3ff':'#f9fafb', color:'#374151', transition:'all 0.15s' }} />
+          {isSearching && (
+            <button onClick={()=>setSearch('')}
+              style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#9ca3af', display:'flex', alignItems:'center', padding:2 }}
+              onMouseEnter={e=>e.currentTarget.style.color='#374151'}
+              onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>
+              <Icon name="x" size={13} color="currentColor" />
+            </button>
+          )}
+        </div>
+        {/* Search hint */}
+        {!isSearching && (
+          <p style={{ fontSize:11, color:'#d1d5db', marginTop:5, textAlign:'center' }}>
+            Search by location, topic, hobby, any detail you remember
+          </p>
+        )}
+      </div>
+
+      {/* Group filter chips */}
+      {allGroups.length > 0 && (
+        <div style={{ padding:'8px 14px 10px', borderBottom:'1px solid #f9fafb', overflowX:'auto' }}>
+          <div style={{ display:'flex', gap:5, flexWrap:'nowrap' }}>
+            <Chip active={!activeGroup} onClick={()=>setActiveGroup(null)}>All</Chip>
+            {allGroups.map(g => (
+              <Chip key={g} active={activeGroup===g} onClick={()=>setActiveGroup(activeGroup===g?null:g)}>{g}</Chip>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Stats + sort — only shown when not searching */}
+      {!isSearching && (
+        <div style={{ padding:'4px 16px 8px', borderBottom:'1px solid #f9fafb', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:12, color:'#9ca3af' }}>{people.length} contact{people.length!==1?'s':''}</span>
+          <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
+            style={{ fontSize:12, color:'#6b7280', border:'none', background:'transparent', cursor:'pointer', outline:'none' }}>
+            <option value="recent">Recent first</option>
+            <option value="name">A – Z</option>
+            <option value="attention">Needs attention</option>
+          </select>
+        </div>
+      )}
+
+      {/* Overdue alert — only shown when not searching */}
+      {overdueCount > 0 && !isSearching && (
+        <div style={{ margin:'8px 10px 0', padding:'8px 12px', background:'#fef2f2', borderRadius:8, border:'1px solid #fecaca', fontSize:12, color:'#991b1b', display:'flex', alignItems:'center', gap:6 }}>
+          <Icon name="bell" size={13} color="#ef4444" />
+          {overdueCount} contact{overdueCount>1?'s':''} overdue for follow-up
+        </div>
+      )}
+
+      {/* List or Search Results */}
+      <div style={{ flex:1, overflowY:'auto', padding:'6px 8px 8px' }}>
+        {isSearching ? (
+          <SearchResults results={searchResults} query={search} onSelect={onSelect} selectedId={selectedId} />
+        ) : (
+          <>
+            {filtered.length === 0 && (
+              <p style={{ fontSize:14, color:'#9ca3af', textAlign:'center', marginTop:40 }}>No contacts yet</p>
+            )}
+            {filtered.map(p => {
+              const st = getStatus(p);
+              const last = lastConvDate(p);
+              const sel = p.id === selectedId;
+              return (
+                <div key={p.id} className="person-row"
+                  onClick={() => onSelect(p.id)}
+                  style={{ padding:'9px 10px', borderRadius:10, cursor:'pointer', marginBottom:2, background: sel ? '#eef2ff' : 'transparent', display:'flex', alignItems:'center', gap:10 }}
+                  onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#f9fafb'; }}
+                  onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background='transparent'; }}>
+                  <div style={{ position:'relative', flexShrink:0 }}>
+                    <Avatar name={p.name} size={38} />
+                    {st !== 'off' && (
+                      <span style={{ position:'absolute', bottom:0, right:0, width:10, height:10, borderRadius:'50%', background:STATUS_COLOR[st], border:'2px solid white' }} />
+                    )}
+                  </div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontSize:14, fontWeight:600, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</p>
+                    <p style={{ fontSize:12, color:'#9ca3af', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginTop:1 }}>
+                      {last ? fmt(last) : (p.company || 'No conversations yet')}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ── Dashboard Sub-components ─────────────────────────────────────────────── */
+const StatCard = ({ icon, label, value, trend, accent }) => (
+  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+      <span style={{ fontSize:22 }}>{icon}</span>
+      {trend !== undefined && trend !== 0 && (
+        <span style={{ fontSize:12, color: trend>0?'#10b981':'#9ca3af', fontWeight:700, background: trend>0?'#f0fdf4':'#f9fafb', padding:'2px 7px', borderRadius:99 }}>
+          {trend>0?'↑':''}{trend>0?`+${trend}`:`${trend}`} mo
+        </span>
+      )}
+    </div>
+    <p style={{ fontSize:30, fontWeight:900, color: accent||'#111827', lineHeight:1, marginBottom:4 }}>{value}</p>
+    <p style={{ fontSize:12, color:'#9ca3af' }}>{label}</p>
+  </div>
+);
+
+const BUCKETS = [
+  { key:'mo3',  label:'3 – 6 months',   color:'#f59e0b', bg:'#fffbeb', border:'#fde68a' },
+  { key:'mo6',  label:'6 – 9 months',   color:'#f97316', bg:'#fff7ed', border:'#fed7aa' },
+  { key:'mo9',  label:'9 – 12 months',  color:'#ef4444', bg:'#fef2f2', border:'#fecaca' },
+  { key:'mo12', label:'12+ months',     color:'#9f1239', bg:'#fff1f2', border:'#fecdd3' },
+];
+
+const CatchUpSection = ({ buckets, catchupTotal, onSelect }) => (
+  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>Time to catch up</h3>
+    <p style={{ fontSize:12, color:'#9ca3af', marginBottom:16 }}>
+      {catchupTotal > 0
+        ? `${catchupTotal} contact${catchupTotal>1?'s':''} haven't heard from you in a while`
+        : "Everyone's been heard from recently 🎉"}
+    </p>
+
+    {catchupTotal === 0 && (
+      <div style={{ textAlign:'center', padding:'24px 0' }}>
+        <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
+        <p style={{ fontSize:14, color:'#9ca3af' }}>All caught up!</p>
+      </div>
+    )}
+
+    {BUCKETS.map(({ key, label, color, bg, border }) => {
+      const list = buckets[key];
+      if (!list.length) return null;
+      return (
+        <div key={key} style={{ marginBottom:14 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:7 }}>
+            <span style={{ width:8, height:8, borderRadius:'50%', background:color, flexShrink:0 }} />
+            <span style={{ fontSize:11, fontWeight:700, color, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
+            <span style={{ fontSize:11, color:'#9ca3af' }}>· {list.length}</span>
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+            {list.map(p => {
+              const days = lastConvDate(p) ? daysSince(lastConvDate(p)) : null;
+              const mo = days ? Math.round(days/30) : null;
+              return (
+                <button key={p.id} onClick={() => onSelect(p.id)}
+                  style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px 5px 5px',
+                    background:bg, border:`1px solid ${border}`, borderRadius:99, cursor:'pointer',
+                    transition:'filter 0.1s' }}
+                  onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.95)'}
+                  onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
+                  <Avatar name={p.name} size={22} />
+                  <span style={{ fontSize:13, color:'#374151', fontWeight:500 }}>{p.name}</span>
+                  <span style={{ fontSize:11, color:'#9ca3af' }}>{mo ? `${mo}mo` : 'never'}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+);
+
+const UpcomingSection = ({ upcoming, onSelect }) => (
+  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>Upcoming</h3>
+    <p style={{ fontSize:12, color:'#9ca3af', marginBottom:16 }}>Planned catch-ups and follow-ons</p>
+
+    {upcoming.length === 0 ? (
+      <div style={{ textAlign:'center', padding:'20px 0' }}>
+        <div style={{ fontSize:28, marginBottom:8 }}>📅</div>
+        <p style={{ fontSize:13, color:'#9ca3af' }}>No upcoming meetings logged</p>
+        <p style={{ fontSize:11, color:'#d1d5db', marginTop:4, lineHeight:'1.4' }}>
+          Set a "Next planned contact" date<br/>when logging a conversation
+        </p>
+      </div>
+    ) : (
+      upcoming.map((c, i) => {
+        const meetDate = new Date(c.nextMeeting + 'T12:00:00');
+        const daysUntil = Math.ceil((meetDate - new Date(new Date().setHours(0,0,0,0))) / 86400000);
+        const urgency = daysUntil <= 2 ? '#ef4444' : daysUntil <= 7 ? '#f59e0b' : '#9ca3af';
+        return (
+          <div key={i}
+            onClick={() => onSelect(c.person.id)}
+            style={{ display:'flex', gap:12, padding:'10px 10px', borderRadius:8, cursor:'pointer',
+              background: i%2===0 ? '#fafafa' : 'white', marginBottom:4, transition:'background 0.1s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
+            onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fafafa':'white'}>
+            {/* Date block */}
+            <div style={{ textAlign:'center', minWidth:38, flexShrink:0, paddingTop:2 }}>
+              <p style={{ fontSize:10, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.05em', lineHeight:1 }}>
+                {meetDate.toLocaleDateString('en-US',{month:'short'})}
+              </p>
+              <p style={{ fontSize:22, fontWeight:900, color:'#4f46e5', lineHeight:1.1 }}>
+                {meetDate.getDate()}
+              </p>
+            </div>
+            {/* Details */}
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
+                <Avatar name={c.person.name} size={18} />
+                <span style={{ fontSize:13, fontWeight:600, color:'#111827' }}>{c.person.name}</span>
+              </div>
+              {c.nextMeetingNote && <p style={{ fontSize:12, color:'#6b7280', lineHeight:'1.4' }}>{c.nextMeetingNote}</p>}
+              <p style={{ fontSize:11, color:urgency, fontWeight:500, marginTop:2 }}>
+                {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`}
+              </p>
+            </div>
+          </div>
+        );
+      })
+    )}
+  </div>
+);
+
+const RecentSection = ({ recent, onSelect }) => {
+  if (!recent.length) return null;
+  return (
+    <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+      <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:16 }}>Recent conversations</h3>
+      {recent.map((c, i) => (
+        <div key={i}
+          onClick={() => onSelect(c.person.id)}
+          style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'10px 8px',
+            borderTop: i>0 ? '1px solid #f9fafb' : 'none', cursor:'pointer', borderRadius:8, marginLeft:-8, marginRight:-8,
+            transition:'background 0.1s' }}
+          onMouseEnter={e=>e.currentTarget.style.background='#f9fafb'}
+          onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+          <Avatar name={c.person.name} size={36} />
+          <div style={{ flex:1, minWidth:0 }}>
+            <div style={{ display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'4px 10px', marginBottom:4 }}>
+              <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>{c.person.name}</span>
+              <span style={{ fontSize:12, color:'#9ca3af' }}>{fmt(c.date)}</span>
+              {c.location && (
+                <span style={{ fontSize:12, color:'#9ca3af', display:'flex', alignItems:'center', gap:3 }}>
+                  📍 {c.location}
+                </span>
+              )}
+            </div>
+            {c.topics?.length > 0 && (
+              <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
+                {c.topics.map(t => (
+                  <span key={t} style={{ padding:'1px 7px', background:'#f3f4f6', borderRadius:99, fontSize:11, color:'#6b7280' }}>{t}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/* ── Birthday Section ─────────────────────────────────────────────────────── */
+const BirthdaySection = ({ people, onSelect }) => {
+  const upcoming = useMemo(() => {
+    return people
+      .filter(p => p.birthday)
+      .map(p => ({ person:p, days: daysUntilBirthday(p.birthday) }))
+      .filter(({ days }) => days !== null && days <= 30)
+      .sort((a,b) => a.days - b.days);
+  }, [people]);
+
+  if (!upcoming.length) return null;
+
+  return (
+    <div style={{ background:'white', borderRadius:12, padding:'16px 20px', border:'1px solid #fed7aa', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+        <span style={{ fontSize:18 }}>🎂</span>
+        <h3 style={{ fontSize:14, fontWeight:700, color:'#111827' }}>Upcoming birthdays</h3>
+        <span style={{ fontSize:12, color:'#9ca3af' }}>within the next 30 days</span>
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+        {upcoming.map(({ person:p, days }) => (
+          <button key={p.id} onClick={() => onSelect(p.id)}
+            style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px 8px 8px',
+              background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:10,
+              cursor:'pointer', textAlign:'left', transition:'filter 0.1s' }}
+            onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.96)'}
+            onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
+            <Avatar name={p.name} size={30} />
+            <div>
+              <p style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{p.name}</p>
+              <p style={{ fontSize:11, fontWeight:500, color: days===0?'#dc2626':days<=3?'#ea580c':'#78716c' }}>
+                {days===0 ? '🎉 Today!' : days===1 ? 'Tomorrow!' : `${fmtBday(p.birthday)} · in ${days} days`}
+              </p>
+            </div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ── Dashboard ────────────────────────────────────────────────────────────── */
+const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+
+  const allConvs = useMemo(() =>
+    people.flatMap(p => (p.conversations||[]).map(c => ({ ...c, person:p })))
+      .sort((a,b) => b.date.localeCompare(a.date)),
+    [people]
+  );
+
+  // Stats
+  const now = Date.now();
+  const ms30 = 30 * 86400000;
+  const convs30 = allConvs.filter(c => now - new Date(c.date+'T12:00:00') < ms30).length;
+  const convsPrev30 = allConvs.filter(c => { const d = now - new Date(c.date+'T12:00:00'); return d >= ms30 && d < 2*ms30; }).length;
+  const overdueCount = people.filter(p => getStatus(p) === 'overdue').length;
+
+  // Upcoming (future nextMeeting dates), sorted soonest first
+  const today0 = new Date(new Date().setHours(0,0,0,0));
+  const upcoming = useMemo(() =>
+    allConvs
+      .filter(c => c.nextMeeting && new Date(c.nextMeeting+'T12:00:00') >= today0)
+      .sort((a,b) => a.nextMeeting.localeCompare(b.nextMeeting))
+      .slice(0, 8),
+    [allConvs]
+  );
+
+  // Catch-up buckets
+  const buckets = useMemo(() => {
+    const b = { mo3:[], mo6:[], mo9:[], mo12:[] };
+    people.forEach(p => {
+      const d = lastConvDate(p) ? daysSince(lastConvDate(p)) : Infinity;
+      if      (d >= 365) b.mo12.push(p);
+      else if (d >= 270) b.mo9.push(p);
+      else if (d >= 180) b.mo6.push(p);
+      else if (d >= 90)  b.mo3.push(p);
+    });
+    return b;
+  }, [people]);
+  const catchupTotal = buckets.mo3.length + buckets.mo6.length + buckets.mo9.length + buckets.mo12.length;
+
+  const recent = allConvs.slice(0, 5);
+
+  if (people.length === 0) return (
+    <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:40 }}>
+      <div style={{ fontSize:52, marginBottom:16 }}>👥</div>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'#374151', marginBottom:8 }}>Start building your network memory</h2>
+      <p style={{ fontSize:14, color:'#9ca3af', marginBottom:20 }}>Add your first contact to get started.</p>
+      <Btn onClick={onAddPerson}>Add first contact</Btn>
+    </div>
+  );
+
+  return (
+    <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
+      {/* Header */}
+      <div style={{ padding:'16px 28px', background:'white', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'baseline', gap:12 }}>
+        <h1 style={{ fontSize:20, fontWeight:800, color:'#111827' }}>Your Network</h1>
+        <span style={{ fontSize:13, color:'#9ca3af' }}>{greeting} — here's where things stand</span>
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
+        {/* Stats row */}
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:18 }}>
+          <StatCard icon="👥" label="Total contacts" value={people.length} />
+          <StatCard icon="💬" label="Conversations this month" value={convs30}
+            trend={convs30 - convsPrev30} />
+          <StatCard icon="🔔" label="Overdue follow-ups" value={overdueCount}
+            accent={overdueCount > 0 ? '#ef4444' : undefined} />
+          <StatCard icon="📅" label="Upcoming meetings" value={upcoming.length}
+            accent={upcoming.length > 0 ? '#4f46e5' : undefined} />
+        </div>
+
+        {/* Birthday reminders */}
+        <BirthdaySection people={people} onSelect={onSelectPerson} />
+
+        {/* Two-column: catch up + upcoming */}
+        <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:14, marginBottom:14 }}>
+          <CatchUpSection buckets={buckets} catchupTotal={catchupTotal} onSelect={onSelectPerson} />
+          <UpcomingSection upcoming={upcoming} onSelect={onSelectPerson} />
+        </div>
+
+        {/* Recent conversations */}
+        <RecentSection recent={recent} onSelect={onSelectPerson} />
+      </div>
+    </div>
+  );
+};
+
+/* ── App ──────────────────────────────────────────────────────────────────── */
+/* ── Loading / Error screens ──────────────────────────────────────────────── */
+const LoadingScreen = () => (
+  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, background:'#f9fafb' }}>
+    <div style={{ fontSize:36, animation:'spin 1.2s linear infinite', display:'inline-block' }}>⏳</div>
+    <p style={{ fontSize:15, fontWeight:700, color:'#374151' }}>Loading your network…</p>
+    <p style={{ fontSize:12, color:'#9ca3af' }}>Connecting to cloud storage</p>
+    <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
+  </div>
+);
+
+const ErrorScreen = ({ error, onRetry }) => (
+  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:12, background:'#f9fafb', padding:32 }}>
+    <div style={{ fontSize:40 }}>⚠️</div>
+    <p style={{ fontSize:16, fontWeight:700, color:'#374151' }}>Couldn't connect to cloud storage</p>
+    <p style={{ fontSize:13, color:'#6b7280', maxWidth:360, textAlign:'center', lineHeight:'1.55' }}>{error}</p>
+    <button onClick={onRetry} style={{ marginTop:8, padding:'9px 20px', background:'#6366f1', color:'white', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer' }}>Retry</button>
+  </div>
+);
+
+/* ── App ──────────────────────────────────────────────────────────────────── */
+const App = () => {
+  const [people, setPeople] = useState([]);
+  const [cloudReady, setCloudReady] = useState(false); // true once initial load done
+  const [loadError, setLoadError] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [showPersonModal, setShowPersonModal] = useState(false);
+  const [editingPerson, setEditingPerson] = useState(null);
+  const [showConvModal, setShowConvModal] = useState(false);
+  const [editingConv, setEditingConv] = useState(null);
+  const [showQuickCapture, setShowQuickCapture] = useState(false);
+  const [search, setSearch] = useState('');
+  const [sortBy, setSortBy] = useState('recent');
+  const saveTimer  = useRef(null);
+  const skipSave   = useRef(false); // true while applying a remote realtime update
+
+  // Initial load from Supabase
+  const doLoad = () => {
+    setLoadError(null);
+    setCloudReady(false);
+    loadFromCloud()
+      .then(data => { setPeople(data ?? SAMPLE); setCloudReady(true); })
+      .catch(e  => { setLoadError(e.message || 'Unknown error'); });
+  };
+  useEffect(() => { doLoad(); }, []);
+
+  // Realtime subscription — push updates from other devices into local state
+  useEffect(() => {
+    if (!cloudReady) return;
+    const channel = db
+      .channel('resume-sync')
+      .on('postgres_changes', {
+        event: 'UPDATE', schema: 'public', table: TABLE,
+        filter: `id=eq.${ROW_ID}`,
+      }, (payload) => {
+        if (payload.new?.data) {
+          skipSave.current = true;            // don't echo the change back
+          setPeople(payload.new.data);
+          setTimeout(() => { skipSave.current = false; }, 300);
+        }
+      })
+      .subscribe();
+    return () => { db.removeChannel(channel); };
+  }, [cloudReady]);
+
+  // Debounced cloud save — skipped when state came from a remote realtime event
+  useEffect(() => {
+    if (!cloudReady || skipSave.current) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => persistToCloud(people), 1200);
+    return () => clearTimeout(saveTimer.current);
+  }, [people, cloudReady]);
+
+  const selected = people.find(p => p.id === selectedId) || null;
+
+  const savePerson = (p) => {
+    setPeople(prev => prev.find(x=>x.id===p.id) ? prev.map(x=>x.id===p.id?p:x) : [...prev, p]);
+    setSelectedId(p.id);
+    setShowPersonModal(false); setEditingPerson(null);
+  };
+
+  const deletePerson = (id) => {
+    if (!confirm('Delete this contact and all their conversations?')) return;
+    setPeople(prev => prev.filter(p=>p.id!==id));
+    setSelectedId(null);
+  };
+
+  const saveConv = (conv) => {
+    setPeople(prev => prev.map(p => {
+      if (p.id !== selectedId) return p;
+      const exists = p.conversations.find(c=>c.id===conv.id);
+      const convs = exists ? p.conversations.map(c=>c.id===conv.id?conv:c) : [...p.conversations, conv];
+      return { ...p, conversations: convs };
+    }));
+    setShowConvModal(false); setEditingConv(null);
+  };
+
+  // Save a conversation to any person by ID (used by Quick Capture)
+  const saveConvToPersonId = (personId, conv) => {
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, conversations: [...(p.conversations||[]), conv] } : p
+    ));
+    setSelectedId(personId);
+  };
+
+  // Merge updated fields into an existing person (used by Quick Capture update intent)
+  const updatePersonFields = (personId, fields) => {
+    setPeople(prev => prev.map(p => {
+      if (p.id !== personId) return p;
+      return {
+        ...p,
+        role:     fields.role     || p.role,
+        company:  fields.company  || p.company,
+        hometown: fields.hometown || p.hometown,
+        so:       fields.so       || p.so,
+        hobbies:  fields.hobbies?.length ? [...new Set([...(p.hobbies||[]), ...fields.hobbies])] : p.hobbies,
+      };
+    }));
+    setSelectedId(personId);
+  };
+
+  const deleteConv = (personId, convId) => {
+    if (!confirm('Delete this conversation entry?')) return;
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, conversations: p.conversations.filter(c=>c.id!==convId) } : p
+    ));
+  };
+
+  if (loadError) return <ErrorScreen error={loadError} onRetry={doLoad} />;
+  if (!cloudReady) return <LoadingScreen />;
+
+  return (
+    <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
+      <Sidebar
+        people={people} selectedId={selectedId}
+        onSelect={setSelectedId}
+        onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
+        onQuickCapture={() => setShowQuickCapture(true)}
+        search={search} setSearch={setSearch}
+        sortBy={sortBy} setSortBy={setSortBy}
+      />
+
+      {selected ? (
+        <PersonDetail
+          person={selected}
+          onBack={() => setSelectedId(null)}
+          onEditPerson={p => { setEditingPerson(p); setShowPersonModal(true); }}
+          onDeletePerson={deletePerson}
+          onAddConv={() => { setEditingConv(null); setShowConvModal(true); }}
+          onEditConv={c => { setEditingConv(c); setShowConvModal(true); }}
+          onDeleteConv={deleteConv}
+        />
+      ) : (
+        <Dashboard
+          people={people}
+          onSelectPerson={setSelectedId}
+          onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
+        />
+      )}
+
+      {showPersonModal && (
+        <PersonModal person={editingPerson} onSave={savePerson} onClose={() => { setShowPersonModal(false); setEditingPerson(null); }} />
+      )}
+      {showConvModal && (
+        <ConvModal conv={editingConv} personName={selected?.name} onSave={saveConv} onClose={() => { setShowConvModal(false); setEditingConv(null); }} />
+      )}
+      {showQuickCapture && (
+        <QuickCapture
+          people={people}
+          onSaveConvToPersonId={saveConvToPersonId}
+          onSavePerson={savePerson}
+          onUpdatePersonFields={updatePersonFields}
+          onClose={() => setShowQuickCapture(false)}
+        />
+      )}
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
