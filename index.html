@@ -184,6 +184,20 @@ const TABLE         = 'resume_data';
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
+const LS_KEY = 'resume_local_backup';
+
+const lsSave = (people) => {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(people)); } catch(e) {}
+};
+const lsLoad = () => {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
+  } catch(e) { return null; }
+};
+
 const loadFromCloud = async () => {
   const { data, error } = await db.from(TABLE).select('data').eq('id', ROW_ID).maybeSingle();
   if (error) throw error;
@@ -191,6 +205,7 @@ const loadFromCloud = async () => {
 };
 
 const persistToCloud = async (people) => {
+  lsSave(people); // always mirror to localStorage immediately
   const { error } = await db.from(TABLE).upsert({ id: ROW_ID, data: people });
   if (error) console.warn('Save error:', error.message);
 };
@@ -2242,11 +2257,28 @@ const App = () => {
     setLoadError(null);
     setCloudReady(false);
     loadFromCloud()
-      .then(data => {
-        // Always block the save effect during initial hydration — prevents SAMPLE
-        // data from overwriting real data on a slow/failed cloud load.
+      .then(cloudData => {
         skipSave.current = true;
-        setPeople(data ?? SAMPLE);
+
+        let people;
+        if (cloudData && cloudData.length > 0) {
+          // Supabase has data — use it and keep localStorage in sync
+          people = cloudData;
+          lsSave(cloudData);
+        } else {
+          // Supabase returned nothing — fall back to localStorage backup
+          const local = lsLoad();
+          if (local) {
+            people = local;
+            // Re-write local data back to Supabase so cloud catches up
+            // (run after skipSave window so the debounce effect fires)
+            setTimeout(() => { persistToCloud(local); }, 900);
+          } else {
+            people = SAMPLE; // truly empty first run
+          }
+        }
+
+        setPeople(people);
         setCloudReady(true);
         setTimeout(() => { skipSave.current = false; }, 800);
       })
@@ -2292,6 +2324,7 @@ const App = () => {
     const handleUnload = () => {
       if (!cloudReady || skipSave.current) return;
       clearTimeout(saveTimer.current);
+      lsSave(peopleRef.current); // synchronous localStorage write always succeeds
       fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${ROW_ID}`, {
         method: 'PATCH',
         headers: {
