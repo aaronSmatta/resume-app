@@ -554,9 +554,10 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
               <Icon name="edit" size={14} color="currentColor" />
             </button>
             <button onClick={e=>{e.stopPropagation();onDelete(conv.id);}}
-              style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'4px 5px', borderRadius:6 }}
-              onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
-              onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+              title="Delete this log"
+              style={{ background:'none', border:'none', cursor:'pointer', color:'#fca5a5', padding:'4px 6px', borderRadius:6, transition:'all 0.15s' }}
+              onMouseEnter={e=>{ e.currentTarget.style.color='#ef4444'; e.currentTarget.style.background='#fef2f2'; }}
+              onMouseLeave={e=>{ e.currentTarget.style.color='#fca5a5'; e.currentTarget.style.background='none'; }}>
               <Icon name="trash" size={14} color="currentColor" />
             </button>
             {hasBody && (
@@ -705,6 +706,13 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
           <Btn variant="secondary" onClick={()=>onEditPerson(person)} style={{ padding:'8px 10px' }}>
             <Icon name="edit" size={15} color="#6b7280" />
           </Btn>
+          <Btn variant="secondary" onClick={()=>onDeletePerson(person.id)}
+            title="Delete contact"
+            style={{ padding:'8px 10px', borderColor:'#fecaca', transition:'all 0.15s' }}
+            onMouseEnter={e=>{ e.currentTarget.style.background='#fef2f2'; e.currentTarget.style.borderColor='#ef4444'; }}
+            onMouseLeave={e=>{ e.currentTarget.style.background='white'; e.currentTarget.style.borderColor='#fecaca'; }}>
+            <Icon name="trash" size={15} color="#ef4444" />
+          </Btn>
         </div>
       </div>
 
@@ -785,14 +793,7 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
           )}
         </div>
 
-        <div style={{ marginTop:24, paddingTop:16, borderTop:'1px solid #f3f4f6', textAlign:'right' }}>
-          <button onClick={()=>onDeletePerson(person.id)}
-            style={{ fontSize:12, color:'#d1d5db', background:'none', border:'none', cursor:'pointer' }}
-            onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
-            onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
-            Delete this contact
-          </button>
-        </div>
+
       </div>
     </div>
   );
