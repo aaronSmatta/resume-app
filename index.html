@@ -1835,6 +1835,15 @@ const CalendarSection = ({ people, onSelectPerson }) => {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [popoverDay, setPopoverDay] = useState(null);
+
+  // Close popover on outside click
+  React.useEffect(() => {
+    if (popoverDay === null) return;
+    const close = () => setPopoverDay(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [popoverDay]);
 
   const prevMonth = () => {
     if (viewMonth === 0) { setViewYear(y => y-1); setViewMonth(11); }
@@ -1914,25 +1923,62 @@ const CalendarSection = ({ people, onSelectPerson }) => {
           const hasMtg = evts.some(e=>e.type==='meeting');
           const hasBday = evts.some(e=>e.type==='birthday');
           const hasEvt = evts.length > 0;
-          const isSingleEvt = evts.length === 1;
+          const isMulti = evts.length > 1;
+          const isPopOpen = popoverDay === day;
+
+          const handleDayClick = (e) => {
+            e.stopPropagation();
+            if (!hasEvt) return;
+            if (evts.length === 1) { onSelectPerson(evts[0].person.id); return; }
+            setPopoverDay(isPopOpen ? null : day);
+          };
+
           return (
-            <div key={i}
-              onClick={() => { if(isSingleEvt) onSelectPerson(evts[0].person.id); }}
-              title={evts.map(e=>e.label).join(' · ')||undefined}
-              style={{
-                height:36, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                borderRadius:7, cursor:isSingleEvt?'pointer':'default', position:'relative',
-                background: isToday?'#4f46e5' : hasEvt?'#f5f3ff':'transparent',
-                border: '1px solid transparent',
-                transition:'background 0.1s',
-              }}
-              onMouseEnter={e=>{ if(hasEvt&&!isToday) e.currentTarget.style.background='#eef2ff'; }}
-              onMouseLeave={e=>{ if(hasEvt&&!isToday) e.currentTarget.style.background='#f5f3ff'; if(!hasEvt) e.currentTarget.style.background='transparent'; }}>
-              <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday?700:400, color:isToday?'white':hasEvt?'#3730a3':'#374151' }}>{day}</span>
-              {(hasMtg||hasBday) && (
-                <div style={{ display:'flex', gap:2, marginTop:2 }}>
-                  {hasMtg && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#6366f1', flexShrink:0 }} />}
-                  {hasBday && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#f97316', flexShrink:0 }} />}
+            <div key={i} style={{ position:'relative' }}>
+              <div
+                onClick={handleDayClick}
+                title={!isMulti && evts.length===1 ? evts[0].label : undefined}
+                style={{
+                  height:36, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  borderRadius:7, cursor:hasEvt?'pointer':'default',
+                  background: isToday?'#4f46e5' : isPopOpen?'#eef2ff' : hasEvt?'#f5f3ff':'transparent',
+                  border: isPopOpen&&!isToday ? '1px solid #a5b4fc' : '1px solid transparent',
+                  transition:'background 0.1s',
+                }}
+                onMouseEnter={e=>{ if(hasEvt&&!isToday) e.currentTarget.style.background='#eef2ff'; }}
+                onMouseLeave={e=>{ if(hasEvt&&!isToday&&!isPopOpen) e.currentTarget.style.background='#f5f3ff'; if(!hasEvt) e.currentTarget.style.background='transparent'; }}>
+                <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday?700:400, color:isToday?'white':hasEvt?'#3730a3':'#374151' }}>{day}</span>
+                {(hasMtg||hasBday) && (
+                  <div style={{ display:'flex', gap:2, marginTop:2 }}>
+                    {hasMtg && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#6366f1', flexShrink:0 }} />}
+                    {hasBday && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#f97316', flexShrink:0 }} />}
+                  </div>
+                )}
+              </div>
+
+              {/* Multi-event popover */}
+              {isPopOpen && (
+                <div onClick={e=>e.stopPropagation()}
+                  style={{ position:'absolute', top:'calc(100% + 4px)', left:'50%', transform:'translateX(-50%)',
+                    zIndex:200, background:'white', borderRadius:10, boxShadow:'0 6px 24px rgba(0,0,0,0.14)',
+                    border:'1px solid #e5e7eb', minWidth:180, padding:'4px 0', whiteSpace:'nowrap' }}>
+                  {/* Arrow */}
+                  <div style={{ position:'absolute', top:-5, left:'50%', transform:'translateX(-50%) rotate(45deg)',
+                    width:9, height:9, background:'white', border:'1px solid #e5e7eb', borderBottom:'none', borderRight:'none' }} />
+                  {evts.map((ev, ei) => (
+                    <button key={ei}
+                      onClick={() => { onSelectPerson(ev.person.id); setPopoverDay(null); }}
+                      style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'9px 14px',
+                        background:'none', border:'none', cursor:'pointer', textAlign:'left', transition:'background 0.1s' }}
+                      onMouseEnter={e=>e.currentTarget.style.background='#f9fafb'}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <span style={{ fontSize:14, flexShrink:0 }}>{ev.type==='birthday'?'🎂':'📅'}</span>
+                      <div>
+                        <p style={{ fontSize:12, fontWeight:600, color:'#111827', lineHeight:1.3 }}>{ev.person.name}</p>
+                        <p style={{ fontSize:11, color:'#9ca3af', lineHeight:1.3 }}>{ev.label}</p>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
@@ -2012,6 +2058,8 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
   const ms30 = 30 * 86400000;
   const convs30 = allConvs.filter(c => now - new Date(c.date+'T12:00:00') < ms30).length;
   const convsPrev30 = allConvs.filter(c => { const d = now - new Date(c.date+'T12:00:00'); return d >= ms30 && d < 2*ms30; }).length;
+  const newContacts30 = people.filter(p => p.createdAt && now - new Date(p.createdAt+'T12:00:00') < ms30).length;
+  const newContactsPrev30 = people.filter(p => { if (!p.createdAt) return false; const d = now - new Date(p.createdAt+'T12:00:00'); return d >= ms30 && d < 2*ms30; }).length;
   const overdueCount = people.filter(p => getStatus(p) === 'overdue').length;
 
   // Upcoming (next 30 days), sorted soonest first
@@ -2065,7 +2113,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
       <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
         {/* Stats row */}
         <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:18 }}>
-          <StatCard icon="👥" label="Total contacts" value={people.length} />
+          <StatCard icon="👥" label="New contacts (30d)" value={newContacts30} trend={newContacts30 - newContactsPrev30} />
           <StatCard icon="💬" label="Conversations this month" value={convs30}
             trend={convs30 - convsPrev30} />
           <StatCard icon="🔔" label="Overdue follow-ups" value={overdueCount}
