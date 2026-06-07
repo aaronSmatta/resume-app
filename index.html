@@ -174,57 +174,7 @@ const buildResumeBrief = (person) => {
 };
 
 /* ── Sample Data ──────────────────────────────────────────────────────────── */
-const SAMPLE = [
-  {
-    id:'p1', name:'Marcus Chen', role:'Product Manager', company:'Stripe',
-    howMet:'SaaStr Annual 2024', hometown:'San Francisco (grew up in Taipei)',
-    so:'Diana', kids:[], birthday:'06-22', hobbies:['surfing','photography','coffee brewing'],
-    groups:['Startup','SF Network'], additionalInfo:'',
-    followUpEnabled:true, followUpDays:45, createdAt:'2024-03-10',
-    conversations:[
-      { id:'c1', date:'2025-11-10', location:'Blue Bottle Coffee, SF',
-        topics:['AI in fintech','career pivot','team building'],
-        insights:"Considering leaving Stripe to build in AI payments. Frustrated with slow decision-making at scale. Really energized by LLMs + financial infrastructure. Diana just got promoted at her law firm.",
-        openQuestions:['Did he end up talking to the YC partner he mentioned?','What happened with the internal transfer he was weighing?'],
-        followUps:['Send the LLM + payments article I bookmarked','Check in after Q1 2026 to see if he made a move'],
-        notes:'', nextMeeting:'2026-06-20', nextMeetingNote:'Coffee catch-up — check in on the Stripe exit decision' },
-      { id:'c2', date:'2024-03-10', location:'SaaStr Conference',
-        topics:['product strategy','0-to-1'],
-        insights:"Met at a roundtable. Deep B2B SaaS background. Generous sharing his 0-to-1 playbook.",
-        openQuestions:[], followUps:['Connect on LinkedIn'], notes:'Gave a great dim sum rec near Moscone.' }
-    ]
-  },
-  {
-    id:'p2', name:'Priya Nair', role:'Founder & CEO', company:'Korali Health',
-    howMet:'Intro via Jake Robinson', hometown:'Boston (originally Chennai)',
-    so:'Rohan', kids:[], birthday:'06-28', hobbies:['marathon running','sci-fi novels','South Indian cooking'],
-    groups:['Startup','Health Tech'], additionalInfo:'',
-    followUpEnabled:true, followUpDays:30, createdAt:'2025-08-01',
-    conversations:[
-      { id:'c3', date:'2025-08-01', location:'Zoom',
-        topics:['fundraising','health tech','remote teams'],
-        insights:"Closing Series A. Sharp on GTM. Strong conviction that consumer health needs to be personalized at the genetic level. Rohan runs a design studio. Running her 6th marathon in Chicago this October.",
-        openQuestions:['How did the Series A close?','Did the hospital system partnership come through?'],
-        followUps:['Follow up after Chicago marathon (Oct 2025)','Intro to Lisa at a16z bio'],
-        notes:'', nextMeeting:'2026-07-10', nextMeetingNote:'Zoom — check in on Series A close and hospital partnership' }
-    ]
-  },
-  {
-    id:'p3', name:'Tom Hargreaves', role:'VP Sales', company:'Datadog',
-    howMet:'High school friends', hometown:'Denver, CO',
-    so:'Melissa', kids:['Emma (2)'], birthday:'11-03', hobbies:['skiing','fantasy football','woodworking'],
-    groups:['Personal','Sales'], additionalInfo:'',
-    followUpEnabled:false, followUpDays:90, createdAt:'2023-01-01',
-    conversations:[
-      { id:'c4', date:'2024-06-20', location:'Dinner at Nobu, NYC',
-        topics:['family','career','real estate'],
-        insights:"New baby girl — Emma, born April. Melissa on maternity leave. Tom crushed Q2. Looking at buying in Park Slope. Still wants to do a Whistler ski trip.",
-        openQuestions:[],
-        followUps:['Plan Whistler trip for winter 2025','Send baby gift for Emma'],
-        notes:'He paid — I owe him one.' }
-    ]
-  }
-];
+const SAMPLE = [];
 
 /* ── Supabase ─────────────────────────────────────────────────────────────── */
 const SUPABASE_URL  = 'https://mjrlpysiunnuaqjryoxp.supabase.co';
@@ -2237,15 +2187,12 @@ const App = () => {
     setCloudReady(false);
     loadFromCloud()
       .then(data => {
-        if (data) {
-          skipSave.current = true; // don't echo loaded data back to Supabase
-          setPeople(data);
-          setCloudReady(true);
-          setTimeout(() => { skipSave.current = false; }, 500);
-        } else {
-          setPeople(SAMPLE);
-          setCloudReady(true);
-        }
+        // Always block the save effect during initial hydration — prevents SAMPLE
+        // data from overwriting real data on a slow/failed cloud load.
+        skipSave.current = true;
+        setPeople(data ?? SAMPLE);
+        setCloudReady(true);
+        setTimeout(() => { skipSave.current = false; }, 800);
       })
       .catch(e  => { setLoadError(e.message || 'Unknown error'); });
   };
