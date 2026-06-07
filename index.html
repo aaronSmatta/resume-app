@@ -1547,10 +1547,13 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
       {/* Header */}
       <div style={{ padding:'18px 16px 12px' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-          <div>
+          <button onClick={() => onSelect(null)} title="Go to dashboard"
+            style={{ background:'none', border:'none', cursor:'pointer', padding:0, textAlign:'left', transition:'opacity 0.15s' }}
+            onMouseEnter={e=>e.currentTarget.style.opacity='0.75'}
+            onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
             <div style={{ fontSize:22, fontWeight:900, color:'#4f46e5', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
             <div style={{ fontSize:11, color:'#9ca3af', marginTop:2, letterSpacing:'0.03em' }}>Remember what matters</div>
-          </div>
+          </button>
           <div style={{ display:'flex', gap:6 }}>
             <button onClick={onQuickCapture} title="Quick capture"
               style={{ width:34, height:34, borderRadius:10, background:'#f0f0ff', border:'1px solid #c7d2fe', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s' }}
@@ -1740,8 +1743,7 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect }) => (
 
 const UpcomingSection = ({ upcoming, onSelect }) => (
   <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
-    <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>Upcoming</h3>
-    <p style={{ fontSize:12, color:'#9ca3af', marginBottom:16 }}>Planned catch-ups and follow-ons</p>
+    <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:16 }}>Scheduled Events — next 30 days</h3>
 
     {upcoming.length === 0 ? (
       <div style={{ textAlign:'center', padding:'20px 0' }}>
@@ -1828,6 +1830,175 @@ const RecentSection = ({ recent, onSelect }) => {
   );
 };
 
+/* ── Calendar Section ─────────────────────────────────────────────────────── */
+const CalendarSection = ({ people, onSelectPerson }) => {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [selectedDay, setSelectedDay] = useState(null);
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewYear(y => y-1); setViewMonth(11); }
+    else setViewMonth(m => m-1);
+    setSelectedDay(null);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewYear(y => y+1); setViewMonth(0); }
+    else setViewMonth(m => m+1);
+    setSelectedDay(null);
+  };
+
+  // Collect scheduled meetings + birthdays for the viewed month
+  const monthEvents = useMemo(() => {
+    const map = {};
+    const add = (day, entry) => { if (!map[day]) map[day]=[]; map[day].push(entry); };
+    people.forEach(p => {
+      // Scheduled meetings
+      (p.conversations||[]).forEach(c => {
+        if (!c.nextMeeting) return;
+        const d = new Date(c.nextMeeting+'T12:00:00');
+        if (d.getFullYear()===viewYear && d.getMonth()===viewMonth)
+          add(d.getDate(), { person:p, label:c.nextMeetingNote||'Catch-up', type:'meeting' });
+      });
+      // Birthdays (year-independent)
+      if (p.birthday) {
+        const b = new Date(p.birthday+'T12:00:00');
+        if (b.getMonth()===viewMonth)
+          add(b.getDate(), { person:p, label:`${p.name.split(' ')[0]}'s birthday 🎂`, type:'birthday' });
+      }
+    });
+    return map;
+  }, [people, viewYear, viewMonth]);
+
+  const firstDow = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth+1, 0).getDate();
+  const monthLabel = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-US', { month:'long', year:'numeric' });
+  const isCurrentMonth = viewYear===today.getFullYear() && viewMonth===today.getMonth();
+
+  const cells = [];
+  for (let i=0; i<firstDow; i++) cells.push(null);
+  for (let d=1; d<=daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+
+  const selectedEvents = selectedDay ? (monthEvents[selectedDay]||[]) : [];
+  const allMonthEntries = Object.entries(monthEvents)
+    .sort((a,b)=>parseInt(a[0])-parseInt(b[0]))
+    .flatMap(([day,evts]) => evts.map(e=>({ ...e, day:parseInt(day) })));
+
+  const navBtn = { background:'none', border:'1px solid #e5e7eb', borderRadius:6, width:26, height:26, cursor:'pointer', fontSize:14, color:'#6b7280', display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.1s' };
+
+  return (
+    <div style={{ background:'white', borderRadius:12, padding:'16px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <span style={{ fontSize:16 }}>📆</span>
+          <h3 style={{ fontSize:14, fontWeight:700, color:'#111827' }}>Calendar</h3>
+          {allMonthEntries.length > 0 && (
+            <span style={{ fontSize:11, color:'#9ca3af' }}>{allMonthEntries.length} event{allMonthEntries.length!==1?'s':''}</span>
+          )}
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          <button style={navBtn} onClick={prevMonth}
+            onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
+            onMouseLeave={e=>e.currentTarget.style.background='transparent'}>‹</button>
+          <span style={{ fontSize:13, fontWeight:600, color:'#374151', minWidth:130, textAlign:'center' }}>{monthLabel}</span>
+          <button style={navBtn} onClick={nextMonth}
+            onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
+            onMouseLeave={e=>e.currentTarget.style.background='transparent'}>›</button>
+        </div>
+      </div>
+
+      {/* Day-of-week headers */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:3 }}>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} style={{ textAlign:'center', fontSize:10, fontWeight:700, color:'#c4c8d4', paddingBottom:4, letterSpacing:'0.04em' }}>{d}</div>
+        ))}
+      </div>
+
+      {/* Day cells */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2 }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={i} style={{ height:36 }} />;
+          const isToday = isCurrentMonth && day===today.getDate();
+          const isSel = day===selectedDay;
+          const evts = monthEvents[day]||[];
+          const hasMtg = evts.some(e=>e.type==='meeting');
+          const hasBday = evts.some(e=>e.type==='birthday');
+          const hasEvt = evts.length > 0;
+          return (
+            <div key={i}
+              onClick={() => { setSelectedDay(isSel ? null : day); if(hasEvt && evts.length===1) onSelectPerson(evts[0].person.id); }}
+              title={evts.map(e=>e.label).join(' · ')||undefined}
+              style={{
+                height:36, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                borderRadius:7, cursor:hasEvt?'pointer':'default', position:'relative',
+                background: isToday?'#4f46e5' : isSel?'#eef2ff' : hasEvt?'#f5f3ff':'transparent',
+                border: isSel&&!isToday ? '1px solid #a5b4fc' : '1px solid transparent',
+                transition:'background 0.1s',
+              }}
+              onMouseEnter={e=>{ if(hasEvt&&!isToday) e.currentTarget.style.background='#eef2ff'; }}
+              onMouseLeave={e=>{ if(hasEvt&&!isToday&&!isSel) e.currentTarget.style.background='#f5f3ff'; if(!hasEvt) e.currentTarget.style.background='transparent'; }}>
+              <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday||isSel?700:400, color:isToday?'white':hasEvt?'#3730a3':'#374151' }}>{day}</span>
+              {(hasMtg||hasBday) && (
+                <div style={{ display:'flex', gap:2, marginTop:2 }}>
+                  {hasMtg && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#6366f1', flexShrink:0 }} />}
+                  {hasBday && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#f97316', flexShrink:0 }} />}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Event list — selected day or all month */}
+      {allMonthEntries.length > 0 && (
+        <div style={{ marginTop:14, borderTop:'1px solid #f3f4f6', paddingTop:12 }}>
+          {(selectedDay ? selectedEvents.map(e=>({...e,day:selectedDay})) : allMonthEntries).map((e, i) => {
+            const d = new Date(viewYear, viewMonth, e.day);
+            const daysAway = Math.ceil((d - new Date(new Date().setHours(0,0,0,0))) / 86400000);
+            const dateStr = d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+            const urgency = daysAway===0?'#ef4444':daysAway===1?'#f59e0b':daysAway<0?'#9ca3af':'#6366f1';
+            return (
+              <div key={i} onClick={() => onSelectPerson(e.person.id)}
+                style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 8px', borderRadius:8, cursor:'pointer', transition:'background 0.1s', marginBottom:2 }}
+                onMouseEnter={ev=>ev.currentTarget.style.background='#f9fafb'}
+                onMouseLeave={ev=>ev.currentTarget.style.background='transparent'}>
+                <span style={{ fontSize:15, flexShrink:0 }}>{e.type==='birthday'?'🎂':'📅'}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <span style={{ fontSize:13, fontWeight:600, color:'#111827' }}>{e.person.name}</span>
+                  <span style={{ fontSize:12, color:'#6b7280', marginLeft:7 }}>{e.label}</span>
+                </div>
+                <div style={{ textAlign:'right', flexShrink:0 }}>
+                  <p style={{ fontSize:11, color:'#9ca3af' }}>{dateStr}</p>
+                  <p style={{ fontSize:11, fontWeight:500, color:urgency }}>
+                    {daysAway<0?`${Math.abs(daysAway)}d ago`:daysAway===0?'Today':daysAway===1?'Tomorrow':`In ${daysAway}d`}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {allMonthEntries.length===0 && (
+        <p style={{ textAlign:'center', fontSize:12, color:'#d1d5db', marginTop:12, paddingBottom:4 }}>No events scheduled this month</p>
+      )}
+
+      {/* Legend */}
+      <div style={{ display:'flex', gap:14, marginTop:12, paddingTop:10, borderTop:'1px solid #f9fafb', justifyContent:'flex-end' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span style={{ width:7, height:7, borderRadius:'50%', background:'#6366f1', flexShrink:0 }} />
+          <span style={{ fontSize:10, color:'#9ca3af' }}>Scheduled meeting</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span style={{ width:7, height:7, borderRadius:'50%', background:'#f97316', flexShrink:0 }} />
+          <span style={{ fontSize:10, color:'#9ca3af' }}>Birthday</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── Birthday Section ─────────────────────────────────────────────────────── */
 const BirthdaySection = ({ people, onSelect }) => {
   const upcoming = useMemo(() => {
@@ -1887,11 +2058,16 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
   const convsPrev30 = allConvs.filter(c => { const d = now - new Date(c.date+'T12:00:00'); return d >= ms30 && d < 2*ms30; }).length;
   const overdueCount = people.filter(p => getStatus(p) === 'overdue').length;
 
-  // Upcoming (future nextMeeting dates), sorted soonest first
+  // Upcoming (next 30 days), sorted soonest first
   const today0 = new Date(new Date().setHours(0,0,0,0));
+  const in30 = new Date(today0.getTime() + 30 * 86400000);
   const upcoming = useMemo(() =>
     allConvs
-      .filter(c => c.nextMeeting && new Date(c.nextMeeting+'T12:00:00') >= today0)
+      .filter(c => {
+        if (!c.nextMeeting) return false;
+        const d = new Date(c.nextMeeting+'T12:00:00');
+        return d >= today0 && d <= in30;
+      })
       .sort((a,b) => a.nextMeeting.localeCompare(b.nextMeeting))
       .slice(0, 8),
     [allConvs]
@@ -1941,6 +2117,9 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
           <StatCard icon="📅" label="Upcoming meetings" value={upcoming.length}
             accent={upcoming.length > 0 ? '#4f46e5' : undefined} />
         </div>
+
+        {/* Calendar */}
+        <CalendarSection people={people} onSelectPerson={onSelectPerson} />
 
         {/* Birthday reminders */}
         <BirthdaySection people={people} onSelect={onSelectPerson} />
