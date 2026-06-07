@@ -1513,7 +1513,7 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 };
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
-const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, search, setSearch, sortBy, setSortBy }) => {
+const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, search, setSearch, sortBy, setSortBy, saveStatus }) => {
   const [activeGroup, setActiveGroup] = useState(null);
   const overdueCount = people.filter(p=>getStatus(p)==='overdue').length;
   const isSearching = search.trim().length > 0;
@@ -1553,6 +1553,8 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
             onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
             <div style={{ fontSize:22, fontWeight:900, color:'#4f46e5', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
             <div style={{ fontSize:11, color:'#9ca3af', marginTop:2, letterSpacing:'0.03em' }}>Remember what matters</div>
+            {saveStatus === 'saving'  && <div style={{ fontSize:10, color:'#6366f1', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#6366f1', animation:'pulse 1s infinite' }}></span>Saving…</div>}
+            {saveStatus === 'pending' && <div style={{ fontSize:10, color:'#f59e0b', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#f59e0b' }}></span>Unsaved changes</div>}
           </button>
           <div style={{ display:'flex', gap:6 }}>
             <button onClick={onQuickCapture} title="Quick capture"
@@ -2176,13 +2178,28 @@ const App = () => {
   const [sortBy, setSortBy] = useState('recent');
   const saveTimer  = useRef(null);
   const skipSave   = useRef(false); // true while applying a remote realtime update
+  const peopleRef  = useRef(people); // always current for beforeunload
+  const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'pending' | 'saving'
+
+  // Keep peopleRef in sync
+  useEffect(() => { peopleRef.current = people; }, [people]);
 
   // Initial load from Supabase
   const doLoad = () => {
     setLoadError(null);
     setCloudReady(false);
     loadFromCloud()
-      .then(data => { setPeople(data ?? SAMPLE); setCloudReady(true); })
+      .then(data => {
+        if (data) {
+          skipSave.current = true; // don't echo loaded data back to Supabase
+          setPeople(data);
+          setCloudReady(true);
+          setTimeout(() => { skipSave.current = false; }, 500);
+        } else {
+          setPeople(SAMPLE);
+          setCloudReady(true);
+        }
+      })
       .catch(e  => { setLoadError(e.message || 'Unknown error'); });
   };
   useEffect(() => { doLoad(); }, []);
@@ -2199,6 +2216,7 @@ const App = () => {
         if (payload.new?.data) {
           skipSave.current = true;            // don't echo the change back
           setPeople(payload.new.data);
+          setSaveStatus('saved');
           setTimeout(() => { skipSave.current = false; }, 300);
         }
       })
@@ -2209,10 +2227,36 @@ const App = () => {
   // Debounced cloud save — skipped when state came from a remote realtime event
   useEffect(() => {
     if (!cloudReady || skipSave.current) return;
+    setSaveStatus('pending');
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => persistToCloud(people), 1200);
+    saveTimer.current = setTimeout(async () => {
+      setSaveStatus('saving');
+      await persistToCloud(peopleRef.current);
+      setSaveStatus('saved');
+    }, 500);
     return () => clearTimeout(saveTimer.current);
   }, [people, cloudReady]);
+
+  // Flush save immediately when tab closes — fetch+keepalive survives page unload
+  useEffect(() => {
+    const handleUnload = () => {
+      if (!cloudReady || skipSave.current) return;
+      clearTimeout(saveTimer.current);
+      fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${ROW_ID}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Prefer': 'return=minimal',
+        },
+        body: JSON.stringify({ data: peopleRef.current }),
+        keepalive: true,
+      });
+    };
+    window.addEventListener('beforeunload', handleUnload);
+    return () => window.removeEventListener('beforeunload', handleUnload);
+  }, [cloudReady]);
 
   const selected = people.find(p => p.id === selectedId) || null;
 
@@ -2282,6 +2326,7 @@ const App = () => {
         onQuickCapture={() => setShowQuickCapture(true)}
         search={search} setSearch={setSearch}
         sortBy={sortBy} setSortBy={setSortBy}
+        saveStatus={saveStatus}
       />
 
       {selected ? (
