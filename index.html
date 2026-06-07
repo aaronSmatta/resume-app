@@ -40,7 +40,11 @@ const fmt = (ds) => {
 };
 const fmtBday = (ds) => {
   if (!ds) return '';
-  return new Date(ds + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  // Support "MM-DD" (new) and legacy "YYYY-MM-DD"
+  const p = ds.split('-');
+  const mo = parseInt(p.length === 3 ? p[1] : p[0], 10) - 1;
+  const dy = parseInt(p.length === 3 ? p[2] : p[1], 10);
+  return new Date(2000, mo, dy).toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
 };
 const daysSince = (ds) => {
   if (!ds) return Infinity;
@@ -67,9 +71,11 @@ const STATUS_LABEL = { off:'', new:'New contact', ok:'Up to date', soon:'Follow 
 const daysUntilBirthday = (birthdayStr) => {
   if (!birthdayStr) return null;
   const today = new Date(); today.setHours(0,0,0,0);
-  const bday = new Date(birthdayStr + 'T12:00:00');
-  let next = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
-  if (next < today) next = new Date(today.getFullYear()+1, bday.getMonth(), bday.getDate());
+  const p = birthdayStr.split('-');
+  const mo = parseInt(p.length === 3 ? p[1] : p[0], 10) - 1;
+  const dy = parseInt(p.length === 3 ? p[2] : p[1], 10);
+  let next = new Date(today.getFullYear(), mo, dy);
+  if (next < today) next = new Date(today.getFullYear()+1, mo, dy);
   return Math.floor((next - today) / 86400000);
 };
 
@@ -127,9 +133,11 @@ const buildResumeBrief = (person) => {
 
   // Birthday alert
   if (person.birthday) {
-    const bday = new Date(person.birthday + 'T12:00:00');
+    const bp = person.birthday.split('-');
+    const bMo = parseInt(bp.length === 3 ? bp[1] : bp[0], 10) - 1;
+    const bDy = parseInt(bp.length === 3 ? bp[2] : bp[1], 10);
     const now = new Date();
-    const next = new Date(now.getFullYear(), bday.getMonth(), bday.getDate());
+    let next = new Date(now.getFullYear(), bMo, bDy);
     if (next < now) next.setFullYear(now.getFullYear()+1);
     const daysUntil = Math.floor((next-now)/86400000);
     if (daysUntil <= 21) starters.push(`🎂 Birthday ${daysUntil===0?'is today':daysUntil<=7?'this week':`in ${daysUntil} days`} — wish them a happy one!`);
@@ -170,7 +178,7 @@ const SAMPLE = [
   {
     id:'p1', name:'Marcus Chen', role:'Product Manager', company:'Stripe',
     howMet:'SaaStr Annual 2024', hometown:'San Francisco (grew up in Taipei)',
-    so:'Diana', kids:[], birthday:'1988-06-22', hobbies:['surfing','photography','coffee brewing'],
+    so:'Diana', kids:[], birthday:'06-22', hobbies:['surfing','photography','coffee brewing'],
     groups:['Startup','SF Network'], additionalInfo:'',
     followUpEnabled:true, followUpDays:45, createdAt:'2024-03-10',
     conversations:[
@@ -189,7 +197,7 @@ const SAMPLE = [
   {
     id:'p2', name:'Priya Nair', role:'Founder & CEO', company:'Korali Health',
     howMet:'Intro via Jake Robinson', hometown:'Boston (originally Chennai)',
-    so:'Rohan', kids:[], birthday:'1991-06-28', hobbies:['marathon running','sci-fi novels','South Indian cooking'],
+    so:'Rohan', kids:[], birthday:'06-28', hobbies:['marathon running','sci-fi novels','South Indian cooking'],
     groups:['Startup','Health Tech'], additionalInfo:'',
     followUpEnabled:true, followUpDays:30, createdAt:'2025-08-01',
     conversations:[
@@ -204,7 +212,7 @@ const SAMPLE = [
   {
     id:'p3', name:'Tom Hargreaves', role:'VP Sales', company:'Datadog',
     howMet:'High school friends', hometown:'Denver, CO',
-    so:'Melissa', kids:['Emma (2)'], birthday:'1987-11-03', hobbies:['skiing','fantasy football','woodworking'],
+    so:'Melissa', kids:['Emma (2)'], birthday:'11-03', hobbies:['skiing','fantasy football','woodworking'],
     groups:['Personal','Sales'], additionalInfo:'',
     followUpEnabled:false, followUpDays:90, createdAt:'2023-01-01',
     conversations:[
@@ -357,7 +365,12 @@ const Avatar = ({ name, size=40 }) => (
 /* ── Person Modal ─────────────────────────────────────────────────────────── */
 const PersonModal = ({ person, onSave, onClose }) => {
   const blank = { id:uid(), name:'', role:'', company:'', howMet:'', hometown:'', so:'', kids:[], birthday:'', hobbies:[], groups:[], additionalInfo:'', followUpEnabled:true, followUpDays:60, createdAt:new Date().toISOString().slice(0,10), conversations:[] };
-  const [f, setF] = useState(() => ({ ...blank, ...(person||{}) }));
+  const [f, setF] = useState(() => {
+    const base = { ...blank, ...(person||{}) };
+    // Migrate legacy "YYYY-MM-DD" birthday → "MM-DD"
+    if (base.birthday && base.birthday.length > 5) base.birthday = base.birthday.slice(5);
+    return base;
+  });
   const set = (k,v) => setF(prev=>({...prev,[k]:v}));
   const isEdit = !!person?.id;
   const valid = f.name.trim().length > 0;
@@ -383,7 +396,25 @@ const PersonModal = ({ person, onSave, onClose }) => {
           {/* 2. Birthday */}
           <div>
             <Label>Birthday</Label>
-            <Input type="date" value={f.birthday} onChange={e=>set('birthday',e.target.value)} />
+            {(() => {
+              const selStyle = { padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color: '#111827', background:'white', cursor:'pointer' };
+              const bdp = f.birthday ? f.birthday.split('-') : ['',''];
+              const bdMo = bdp[0] || ''; const bdDy = bdp[1] || '';
+              const setBd = (mo, dy) => set('birthday', (mo && dy) ? `${mo}-${dy}` : '');
+              const months = [['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']];
+              return (
+                <div style={{ display:'flex', gap:8 }}>
+                  <select value={bdMo} onChange={e=>setBd(e.target.value, bdDy)} style={{ ...selStyle, flex:1 }}>
+                    <option value="">Month</option>
+                    {months.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                  <select value={bdDy} onChange={e=>setBd(bdMo, e.target.value)} style={{ ...selStyle, width:90 }}>
+                    <option value="">Day</option>
+                    {Array.from({length:31},(_,i)=>String(i+1).padStart(2,'0')).map(d=><option key={d} value={d}>{parseInt(d)}</option>)}
+                  </select>
+                </div>
+              );
+            })()}
           </div>
 
           {/* 3. Significant other */}
@@ -1693,7 +1724,7 @@ const BUCKETS = [
   { key:'mo12', label:'12+ months',     color:'#9f1239', bg:'#fff1f2', border:'#fecdd3' },
 ];
 
-const CatchUpSection = ({ buckets, catchupTotal, onSelect }) => (
+const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
   <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
     <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>Time to catch up</h3>
     <p style={{ fontSize:12, color:'#9ca3af', marginBottom:16 }}>
@@ -1724,22 +1755,33 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect }) => (
               const days = lastConvDate(p) ? daysSince(lastConvDate(p)) : null;
               const mo = days ? Math.round(days/30) : null;
               return (
-                <button key={p.id} onClick={() => onSelect(p.id)}
-                  style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 10px 5px 5px',
-                    background:bg, border:`1px solid ${border}`, borderRadius:99, cursor:'pointer',
-                    transition:'filter 0.1s' }}
-                  onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.95)'}
-                  onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
-                  <Avatar name={p.name} size={22} />
-                  <span style={{ fontSize:13, color:'#374151', fontWeight:500 }}>{p.name}</span>
-                  <span style={{ fontSize:11, color:'#9ca3af' }}>{mo ? `${mo}mo` : 'never'}</span>
-                </button>
+                <div key={p.id} style={{ display:'flex', alignItems:'center', background:bg, border:`1px solid ${border}`, borderRadius:99 }}>
+                  <button onClick={() => onSelect(p.id)}
+                    style={{ display:'flex', alignItems:'center', gap:6, padding:'5px 8px 5px 5px',
+                      background:'none', border:'none', borderRadius:'99px 0 0 99px', cursor:'pointer',
+                      transition:'filter 0.1s' }}
+                    onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.95)'}
+                    onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
+                    <Avatar name={p.name} size={22} />
+                    <span style={{ fontSize:13, color:'#374151', fontWeight:500 }}>{p.name}</span>
+                    <span style={{ fontSize:11, color:'#9ca3af' }}>{mo ? `${mo}mo` : 'never'}</span>
+                  </button>
+                  <button onClick={() => onForgo(p.id)} title="No regular follow-up needed"
+                    style={{ display:'flex', alignItems:'center', justifyContent:'center', width:20, height:20, marginRight:5,
+                      background:'rgba(0,0,0,0.06)', border:'none', borderRadius:'50%', cursor:'pointer',
+                      color:'#9ca3af', fontSize:11, lineHeight:1, transition:'all 0.1s', flexShrink:0 }}
+                    onMouseEnter={e=>{ e.currentTarget.style.background='rgba(0,0,0,0.15)'; e.currentTarget.style.color='#374151'; }}
+                    onMouseLeave={e=>{ e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='#9ca3af'; }}>
+                    ×
+                  </button>
+                </div>
               );
             })}
           </div>
         </div>
       );
     })}
+    <p style={{ fontSize:11, color:'#d1d5db', marginTop:12 }}>× removes someone from this list — use when regular check-ins aren't needed. Contacts auto-drop after 15 months.</p>
   </div>
 );
 
@@ -1870,9 +1912,11 @@ const CalendarSection = ({ people, onSelectPerson }) => {
       });
       // Birthdays (year-independent)
       if (p.birthday) {
-        const b = new Date(p.birthday+'T12:00:00');
-        if (b.getMonth()===viewMonth)
-          add(b.getDate(), { person:p, label:`${p.name.split(' ')[0]}'s birthday 🎂`, type:'birthday' });
+        const bp = p.birthday.split('-');
+        const bMo = parseInt(bp.length === 3 ? bp[1] : bp[0], 10) - 1;
+        const bDy = parseInt(bp.length === 3 ? bp[2] : bp[1], 10);
+        if (bMo === viewMonth)
+          add(bDy, { person:p, label:`${p.name.split(' ')[0]}'s birthday 🎂`, type:'birthday' });
       }
     });
     return map;
@@ -2045,7 +2089,7 @@ const BirthdaySection = ({ people, onSelect }) => {
 };
 
 /* ── Dashboard ────────────────────────────────────────────────────────────── */
-const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
+const Dashboard = ({ people, onSelectPerson, onAddPerson, onForgo }) => {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
@@ -2079,12 +2123,15 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
     [allConvs]
   );
 
-  // Catch-up buckets
+  // Catch-up buckets — skip contacts with follow-up off or auto-dropped after 15 months (450d)
+  const FORGO_DAYS = 450;
   const buckets = useMemo(() => {
     const b = { mo3:[], mo6:[], mo9:[], mo12:[] };
     people.forEach(p => {
+      if (!p.followUpEnabled) return;
       const d = lastConvDate(p) ? daysSince(lastConvDate(p)) : Infinity;
-      if      (d >= 365) b.mo12.push(p);
+      if      (d >= FORGO_DAYS) return; // auto-drop after 15 months
+      else if (d >= 365) b.mo12.push(p);
       else if (d >= 270) b.mo9.push(p);
       else if (d >= 180) b.mo6.push(p);
       else if (d >= 90)  b.mo3.push(p);
@@ -2132,7 +2179,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson }) => {
 
         {/* Two-column: catch up + upcoming */}
         <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:14, marginBottom:14 }}>
-          <CatchUpSection buckets={buckets} catchupTotal={catchupTotal} onSelect={onSelectPerson} />
+          <CatchUpSection buckets={buckets} catchupTotal={catchupTotal} onSelect={onSelectPerson} onForgo={onForgo} />
           <UpcomingSection upcoming={upcoming} onSelect={onSelectPerson} />
         </div>
 
@@ -2266,6 +2313,10 @@ const App = () => {
     setShowPersonModal(false); setEditingPerson(null);
   };
 
+  const forgoPerson = (id) => {
+    setPeople(prev => prev.map(p => p.id === id ? { ...p, followUpEnabled: false } : p));
+  };
+
   const deletePerson = (id) => {
     if (!confirm('Delete this contact and all their conversations?')) return;
     setPeople(prev => prev.filter(p=>p.id!==id));
@@ -2344,6 +2395,7 @@ const App = () => {
           people={people}
           onSelectPerson={setSelectedId}
           onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
+          onForgo={forgoPerson}
         />
       )}
 
