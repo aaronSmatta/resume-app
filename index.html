@@ -170,8 +170,8 @@ const SAMPLE = [
   {
     id:'p1', name:'Marcus Chen', role:'Product Manager', company:'Stripe',
     howMet:'SaaStr Annual 2024', hometown:'San Francisco (grew up in Taipei)',
-    so:'Diana', birthday:'1988-06-22', hobbies:['surfing','photography','coffee brewing'],
-    groups:['Startup','SF Network'],
+    so:'Diana', kids:[], birthday:'1988-06-22', hobbies:['surfing','photography','coffee brewing'],
+    groups:['Startup','SF Network'], additionalInfo:'',
     followUpEnabled:true, followUpDays:45, createdAt:'2024-03-10',
     conversations:[
       { id:'c1', date:'2025-11-10', location:'Blue Bottle Coffee, SF',
@@ -189,8 +189,8 @@ const SAMPLE = [
   {
     id:'p2', name:'Priya Nair', role:'Founder & CEO', company:'Korali Health',
     howMet:'Intro via Jake Robinson', hometown:'Boston (originally Chennai)',
-    so:'Rohan', birthday:'1991-06-28', hobbies:['marathon running','sci-fi novels','South Indian cooking'],
-    groups:['Startup','Health Tech'],
+    so:'Rohan', kids:[], birthday:'1991-06-28', hobbies:['marathon running','sci-fi novels','South Indian cooking'],
+    groups:['Startup','Health Tech'], additionalInfo:'',
     followUpEnabled:true, followUpDays:30, createdAt:'2025-08-01',
     conversations:[
       { id:'c3', date:'2025-08-01', location:'Zoom',
@@ -204,8 +204,8 @@ const SAMPLE = [
   {
     id:'p3', name:'Tom Hargreaves', role:'VP Sales', company:'Datadog',
     howMet:'High school friends', hometown:'Denver, CO',
-    so:'Melissa', birthday:'1987-11-03', hobbies:['skiing','fantasy football','woodworking'],
-    groups:['Personal','Sales'],
+    so:'Melissa', kids:['Emma (2)'], birthday:'1987-11-03', hobbies:['skiing','fantasy football','woodworking'],
+    groups:['Personal','Sales'], additionalInfo:'',
     followUpEnabled:false, followUpDays:90, createdAt:'2023-01-01',
     conversations:[
       { id:'c4', date:'2024-06-20', location:'Dinner at Nobu, NYC',
@@ -356,8 +356,8 @@ const Avatar = ({ name, size=40 }) => (
 
 /* ── Person Modal ─────────────────────────────────────────────────────────── */
 const PersonModal = ({ person, onSave, onClose }) => {
-  const blank = { id:uid(), name:'', role:'', company:'', howMet:'', hometown:'', so:'', birthday:'', hobbies:[], groups:[], followUpEnabled:true, followUpDays:60, createdAt:new Date().toISOString().slice(0,10), conversations:[] };
-  const [f, setF] = useState(person || blank);
+  const blank = { id:uid(), name:'', role:'', company:'', howMet:'', hometown:'', so:'', kids:[], birthday:'', hobbies:[], groups:[], additionalInfo:'', followUpEnabled:true, followUpDays:60, createdAt:new Date().toISOString().slice(0,10), conversations:[] };
+  const [f, setF] = useState(() => ({ ...blank, ...(person||{}) }));
   const set = (k,v) => setF(prev=>({...prev,[k]:v}));
   const isEdit = !!person?.id;
   const valid = f.name.trim().length > 0;
@@ -374,34 +374,71 @@ const PersonModal = ({ person, onSave, onClose }) => {
         </div>
 
         <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
+          {/* 1. Name */}
           <div>
             <Label>Name *</Label>
             <Input value={f.name} onChange={e=>set('name',e.target.value)} placeholder="Full name" autoFocus />
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <div><Label>Role</Label><Input value={f.role} onChange={e=>set('role',e.target.value)} placeholder="e.g. Product Manager" /></div>
-            <div><Label>Company</Label><Input value={f.company} onChange={e=>set('company',e.target.value)} placeholder="e.g. Stripe" /></div>
-          </div>
-          <div>
-            <Label>How we met</Label>
-            <Input value={f.howMet} onChange={e=>set('howMet',e.target.value)} placeholder="e.g. SaaStr 2024, intro from Jake..." />
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
-            <div><Label>Hometown / from</Label><Input value={f.hometown} onChange={e=>set('hometown',e.target.value)} placeholder="e.g. Denver, CO" /></div>
-            <div><Label>Significant other</Label><Input value={f.so} onChange={e=>set('so',e.target.value)} placeholder="Name" /></div>
-          </div>
+
+          {/* 2. Birthday */}
           <div>
             <Label>Birthday</Label>
             <Input type="date" value={f.birthday} onChange={e=>set('birthday',e.target.value)} />
           </div>
+
+          {/* 3. Significant other */}
+          <div>
+            <Label>Significant other</Label>
+            <Input value={f.so} onChange={e=>set('so',e.target.value)} placeholder="Name" />
+          </div>
+
+          {/* 4. Kids */}
+          <div>
+            <Label>Kids — names &amp; ages</Label>
+            <TagInput tags={f.kids||[]} onChange={v=>set('kids',v)} placeholder="e.g. Emma (8), Liam (5)… press Enter" />
+          </div>
+
+          {/* 5. How / where we met */}
+          <div>
+            <Label>Where / how we met</Label>
+            <Input value={f.howMet} onChange={e=>set('howMet',e.target.value)} placeholder="e.g. SaaStr 2024, intro from Jake..." />
+          </div>
+
+          {/* 6. Hometown */}
+          <div>
+            <Label>Hometown / from</Label>
+            <Input value={f.hometown} onChange={e=>set('hometown',e.target.value)} placeholder="e.g. Denver, CO" />
+          </div>
+
+          {/* 7–8. Company + Role side-by-side */}
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+            <div><Label>Company</Label><Input value={f.company} onChange={e=>set('company',e.target.value)} placeholder="e.g. Stripe" /></div>
+            <div><Label>Role</Label><Input value={f.role} onChange={e=>set('role',e.target.value)} placeholder="e.g. Product Manager" /></div>
+          </div>
+
+          {/* 9. Additional info */}
+          <div>
+            <Label>Additional info</Label>
+            <textarea value={f.additionalInfo||''} onChange={e=>set('additionalInfo',e.target.value)} rows={3}
+              placeholder="Anything else worth remembering…"
+              style={{ width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, lineHeight:'1.5', resize:'vertical', color:'#374151', background:'#fafafa', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
+              onFocus={e=>e.currentTarget.style.borderColor='#a5b4fc'}
+              onBlur={e=>e.currentTarget.style.borderColor='#e5e7eb'} />
+          </div>
+
+          {/* 10. Groups */}
           <div>
             <Label>Groups</Label>
             <TagInput tags={f.groups||[]} onChange={v=>set('groups',v)} placeholder="e.g. Work, College, Investors… press Enter" />
           </div>
+
+          {/* 11. Interests & hobbies */}
           <div>
-            <Label>Interests & hobbies</Label>
-            <TagInput tags={f.hobbies} onChange={v=>set('hobbies',v)} placeholder="Type hobby, press Enter..." />
+            <Label>Interests &amp; hobbies</Label>
+            <TagInput tags={f.hobbies||[]} onChange={v=>set('hobbies',v)} placeholder="Type hobby, press Enter..." />
           </div>
+
+          {/* 12. Follow-up reminder */}
           <div style={{ padding:'14px 16px', background:'#f9fafb', borderRadius:10, border:'1px solid #f0f0f0' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: f.followUpEnabled ? 12 : 0 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
@@ -741,13 +778,23 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
         {/* About */}
         <Card title="About">
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 24px' }}>
+            {person.birthday && <InfoPair label="Birthday" val={fmtBday(person.birthday)} />}
+            {person.so && <InfoPair label="Partner" val={person.so} />}
             {person.howMet && <InfoPair label="Met at" val={person.howMet} />}
             {person.hometown && <InfoPair label="From" val={person.hometown} />}
-            {person.so && <InfoPair label="Partner" val={person.so} />}
-            {person.birthday && <InfoPair label="Birthday" val={fmtBday(person.birthday)} />}
           </div>
+          {person.kids?.length > 0 && (
+            <div style={{ marginTop:10 }}>
+              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Kids</p>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
+                {person.kids.map(k => (
+                  <span key={k} style={{ padding:'3px 10px', background:'#fef3c7', color:'#92400e', borderRadius:99, fontSize:13 }}>🧒 {k}</span>
+                ))}
+              </div>
+            </div>
+          )}
           {person.hobbies?.length > 0 && (
-            <div style={{ marginTop:12 }}>
+            <div style={{ marginTop:10 }}>
               <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Interests</p>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                 {person.hobbies.map(h => (
@@ -756,7 +803,13 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
               </div>
             </div>
           )}
-          {!person.howMet && !person.hometown && !person.so && !person.birthday && !person.hobbies?.length && (
+          {person.additionalInfo && (
+            <div style={{ marginTop:10 }}>
+              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Notes</p>
+              <p style={{ fontSize:13, color:'#374151', lineHeight:'1.55' }}>{person.additionalInfo}</p>
+            </div>
+          )}
+          {!person.howMet && !person.hometown && !person.so && !person.birthday && !person.hobbies?.length && !person.kids?.length && !person.additionalInfo && (
             <p style={{ fontSize:14, color:'#9ca3af', fontStyle:'italic' }}>No details yet — edit to add.</p>
           )}
         </Card>
@@ -1059,6 +1112,18 @@ const parseNaturalInput = (text, people) => {
     || text.match(/\b(?:her|his)\s+(?:husband|wife|partner|boyfriend|girlfriend)\s+(?:is\s+)?([A-Z][a-z]+)/i);
   if (soM) so = soM[1];
 
+  // Kids
+  let kids = [];
+  const kidsNameRx = /\b(?:kids?|children|son|daughter|boys?|girls?)\s+(?:are?\s+named?|(?:is|are)\s+called|named?)\s+([A-Z][a-z]+(?:(?:\s*,\s*|\s+and\s+)[A-Z][a-z]+)*)/gi;
+  for (const m of text.matchAll(kidsNameRx)) {
+    m[1].split(/,\s*|\s+and\s+/).map(s=>s.trim()).filter(Boolean).forEach(k=>kids.push(k));
+  }
+  const kidsHasRx = /\bhas\s+(?:a\s+)?(?:son|daughter|two\s+kids?|three\s+kids?|[0-9]+\s+kids?)[^.]*?named?\s+([A-Z][a-z]+(?:(?:\s*,\s*|\s+and\s+)[A-Z][a-z]+)*)/gi;
+  for (const m of text.matchAll(kidsHasRx)) {
+    m[1].split(/,\s*|\s+and\s+/).map(s=>s.trim()).filter(Boolean).forEach(k=>kids.push(k));
+  }
+  kids = [...new Set(kids)].slice(0, 6);
+
   // Hometown
   let hometown = '';
   const htM = text.match(/\b(?:from|grew\s+up\s+in|originally\s+from|based\s+in|hometown\s+is)\s+([A-Z][A-Za-z\s,]{2,35?})(?=[.,\n]|$)/i);
@@ -1087,10 +1152,98 @@ const parseNaturalInput = (text, people) => {
   }
   followUps = [...new Set(followUps)].slice(0, 3);
 
-  return { intent, matchedPerson, newName, date, dateLabel, location, topics, company, role, so, hometown, hobbies, openQuestions, followUps, insights: text.trim() };
+  return { intent, matchedPerson, newName, date, dateLabel, location, topics, company, role, so, kids, hometown, hobbies, openQuestions, followUps, insights: text.trim() };
 };
 
 /* ── Quick Capture Components ─────────────────────────────────────────────── */
+const EditRow = ({ icon, label, children }) => (
+  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
+    <span style={{ fontSize:13, flexShrink:0, width:18 }}>{icon}</span>
+    <span style={{ fontSize:11, color:'#9ca3af', flexShrink:0, width:96, textTransform:'uppercase', letterSpacing:'0.04em' }}>{label}</span>
+    {children}
+  </div>
+);
+
+const inlineInput = (value, onChange, placeholder, type='text') => (
+  <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
+    style={{ flex:1, padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'white' }}
+    onFocus={e=>e.currentTarget.style.borderColor='#a5b4fc'}
+    onBlur={e=>e.currentTarget.style.borderColor='#d1d5db'} />
+);
+
+const arrayInput = (arr, onChange, placeholder) => (
+  <input type="text" value={(arr||[]).join(', ')} onChange={e=>onChange(e.target.value.split(',').map(s=>s.trim()).filter(Boolean))} placeholder={placeholder}
+    style={{ flex:1, padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'white' }}
+    onFocus={e=>e.currentTarget.style.borderColor='#a5b4fc'}
+    onBlur={e=>e.currentTarget.style.borderColor='#d1d5db'} />
+);
+
+const EditableParsed = ({ parsed, ep, onChange }) => {
+  const { intent, matchedPerson, newName } = parsed;
+  const isOk = intent !== 'unclear';
+  const personName = matchedPerson?.name || newName;
+  const set = (k,v) => onChange({...ep,[k]:v});
+
+  const headerText = {
+    conversation: `Logging a conversation with ${personName}`,
+    new_person:   `Adding new contact: ${personName}`,
+    update:       `Updating ${personName}'s profile`,
+    unclear:      "Couldn't identify who this is about",
+  }[intent];
+
+  return (
+    <div style={{ borderRadius:12, border:`1px solid ${isOk?'#bbf7d0':'#fecaca'}`, background:isOk?'#f0fdf4':'#fef2f2', padding:'14px 16px' }}>
+      <div style={{ display:'flex', gap:10, alignItems:'center', marginBottom:12 }}>
+        <span style={{ fontSize:18, flexShrink:0 }}>{isOk ? '✅' : '⚠️'}</span>
+        <div>
+          <p style={{ fontSize:13, fontWeight:700, color:isOk?'#166534':'#991b1b', lineHeight:'1.3' }}>{headerText}</p>
+          {isOk && <p style={{ fontSize:11, color:'#4b7c59', marginTop:2 }}>Review and correct any field before saving</p>}
+        </div>
+      </div>
+
+      {intent === 'unclear' && (
+        <p style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', lineHeight:'1.5' }}>
+          Try starting with the person's name, e.g. "Caught up with Sarah…" or "Just met John at the conference…"
+        </p>
+      )}
+
+      {intent === 'conversation' && (
+        <div>
+          <EditRow icon="📅" label="Date">{inlineInput(ep.date, v=>set('date',v), 'YYYY-MM-DD', 'date')}</EditRow>
+          <EditRow icon="📍" label="Location">{inlineInput(ep.location, v=>set('location',v), 'Where did you meet?')}</EditRow>
+          <EditRow icon="💬" label="Topics">{arrayInput(ep.topics, v=>set('topics',v), 'Comma-separated topics')}</EditRow>
+          <EditRow icon="✅" label="Follow-ups">{arrayInput(ep.followUps, v=>set('followUps',v), 'What do you need to do?')}</EditRow>
+          <EditRow icon="❓" label="Open Qs">{arrayInput(ep.openQuestions, v=>set('openQuestions',v), 'Anything unresolved?')}</EditRow>
+        </div>
+      )}
+
+      {intent === 'new_person' && (
+        <div>
+          <EditRow icon="💼" label="Role">{inlineInput(ep.role, v=>set('role',v), 'e.g. Product Manager')}</EditRow>
+          <EditRow icon="🏢" label="Company">{inlineInput(ep.company, v=>set('company',v), 'e.g. Stripe')}</EditRow>
+          <EditRow icon="📍" label="Where met">{inlineInput(ep.location, v=>set('location',v), 'e.g. TechConf 2025')}</EditRow>
+          <EditRow icon="🏠" label="Hometown">{inlineInput(ep.hometown, v=>set('hometown',v), 'e.g. Chicago')}</EditRow>
+          <EditRow icon="❤️" label="Partner">{inlineInput(ep.so, v=>set('so',v), 'Name')}</EditRow>
+          <EditRow icon="🧒" label="Kids">{arrayInput(ep.kids, v=>set('kids',v), 'Names, comma-separated')}</EditRow>
+          <EditRow icon="🎯" label="Interests">{arrayInput(ep.hobbies, v=>set('hobbies',v), 'Comma-separated')}</EditRow>
+          <EditRow icon="💬" label="Topics">{arrayInput(ep.topics, v=>set('topics',v), 'What did you discuss?')}</EditRow>
+        </div>
+      )}
+
+      {intent === 'update' && (
+        <div>
+          <EditRow icon="💼" label="Role">{inlineInput(ep.role, v=>set('role',v), 'e.g. VP Engineering')}</EditRow>
+          <EditRow icon="🏢" label="Company">{inlineInput(ep.company, v=>set('company',v), 'e.g. Stripe')}</EditRow>
+          <EditRow icon="🏠" label="Hometown">{inlineInput(ep.hometown, v=>set('hometown',v), 'e.g. Denver')}</EditRow>
+          <EditRow icon="❤️" label="Partner">{inlineInput(ep.so, v=>set('so',v), 'Name')}</EditRow>
+          <EditRow icon="🧒" label="Kids">{arrayInput(ep.kids, v=>set('kids',v), 'Names, comma-separated')}</EditRow>
+          <EditRow icon="🎯" label="Add interests">{arrayInput(ep.hobbies, v=>set('hobbies',v), 'Comma-separated')}</EditRow>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ParseRow = ({ icon, label, value }) => (
   <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:7 }}>
     <span style={{ fontSize:13, flexShrink:0, marginTop:1 }}>{icon}</span>
@@ -1179,6 +1332,7 @@ const ParsedCard = ({ parsed }) => {
 const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePersonFields, onClose }) => {
   const [text, setText] = useState('');
   const [parsed, setParsed] = useState(null);
+  const [editedParsed, setEditedParsed] = useState(null);
   const [saved, setSaved] = useState(false);
   const [listening, setListening] = useState(false);
   const textRef = React.useRef(null);
@@ -1225,35 +1379,39 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 
   const handleParse = () => {
     if (!text.trim()) return;
-    setParsed(parseNaturalInput(text.trim(), people));
+    const result = parseNaturalInput(text.trim(), people);
+    setParsed(result);
+    setEditedParsed({ ...result });
   };
 
   const handleSave = () => {
-    if (!parsed || parsed.intent === 'unclear') return;
+    if (!editedParsed || editedParsed.intent === 'unclear') return;
+    const ep = editedParsed;
 
     const conv = {
-      id: uid(), date: parsed.date, location: parsed.location || '',
-      topics: parsed.topics, insights: parsed.insights,
-      openQuestions: parsed.openQuestions, followUps: parsed.followUps,
+      id: uid(), date: ep.date, location: ep.location || '',
+      topics: ep.topics, insights: ep.insights,
+      openQuestions: ep.openQuestions, followUps: ep.followUps,
       notes: '', nextMeeting: '', nextMeetingNote: '',
     };
 
-    if (parsed.intent === 'conversation' && parsed.matchedPerson) {
-      onSaveConvToPersonId(parsed.matchedPerson.id, conv);
-    } else if (parsed.intent === 'new_person') {
+    if (ep.intent === 'conversation' && ep.matchedPerson) {
+      onSaveConvToPersonId(ep.matchedPerson.id, conv);
+    } else if (ep.intent === 'new_person') {
       onSavePerson({
-        id: uid(), name: parsed.newName, role: parsed.role || '',
-        company: parsed.company || '', howMet: parsed.location || '',
-        hometown: parsed.hometown || '', so: parsed.so || '',
-        birthday: '', hobbies: parsed.hobbies, groups: [],
-        followUpEnabled: true, followUpDays: 60,
+        id: uid(), name: ep.newName, role: ep.role || '',
+        company: ep.company || '', howMet: ep.location || '',
+        hometown: ep.hometown || '', so: ep.so || '',
+        kids: ep.kids || [], birthday: '', hobbies: ep.hobbies || [],
+        groups: [], followUpEnabled: true, followUpDays: 60,
+        additionalInfo: '',
         createdAt: new Date().toISOString().slice(0, 10),
         conversations: [conv],
       });
-    } else if (parsed.intent === 'update' && parsed.matchedPerson) {
-      onUpdatePersonFields(parsed.matchedPerson.id, {
-        role: parsed.role, company: parsed.company,
-        hometown: parsed.hometown, so: parsed.so, hobbies: parsed.hobbies,
+    } else if (ep.intent === 'update' && ep.matchedPerson) {
+      onUpdatePersonFields(ep.matchedPerson.id, {
+        role: ep.role, company: ep.company, hometown: ep.hometown,
+        so: ep.so, kids: ep.kids, hobbies: ep.hobbies,
       });
     }
 
@@ -1261,14 +1419,14 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
     setTimeout(onClose, 1600);
   };
 
-  const handleReset = () => { setText(''); setParsed(null); };
+  const handleReset = () => { setText(''); setParsed(null); setEditedParsed(null); };
 
-  const canSave = parsed && parsed.intent !== 'unclear';
+  const canSave = editedParsed && editedParsed.intent !== 'unclear';
 
-  const savedMsg = !parsed ? '' :
-    parsed.intent === 'conversation' ? `Conversation added to ${parsed.matchedPerson?.name}` :
-    parsed.intent === 'new_person' ? `${parsed.newName} added to your contacts` :
-    parsed.intent === 'update' ? `${parsed.matchedPerson?.name}'s profile updated` : 'Saved';
+  const savedMsg = !editedParsed ? '' :
+    editedParsed.intent === 'conversation' ? `Conversation added to ${editedParsed.matchedPerson?.name}` :
+    editedParsed.intent === 'new_person' ? `${editedParsed.newName} added to your contacts` :
+    editedParsed.intent === 'update' ? `${editedParsed.matchedPerson?.name}'s profile updated` : 'Saved';
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }}
@@ -1290,8 +1448,10 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 
         {/* Body */}
         <div style={{ flex:1, overflowY:'auto', padding:'16px 22px', display:'flex', flexDirection:'column', gap:12 }}>
-          {/* Parsed result */}
-          {parsed && !saved && <ParsedCard parsed={parsed} />}
+          {/* Editable parsed result */}
+          {parsed && editedParsed && !saved && (
+            <EditableParsed parsed={parsed} ep={editedParsed} onChange={setEditedParsed} />
+          )}
 
           {/* Success */}
           {saved && (
@@ -1913,7 +2073,8 @@ const App = () => {
         company:  fields.company  || p.company,
         hometown: fields.hometown || p.hometown,
         so:       fields.so       || p.so,
-        hobbies:  fields.hobbies?.length ? [...new Set([...(p.hobbies||[]), ...fields.hobbies])] : p.hobbies,
+        kids:     fields.kids?.length ? [...new Set([...(p.kids||[]), ...fields.kids])] : (p.kids||[]),
+        hobbies:  fields.hobbies?.length ? [...new Set([...(p.hobbies||[]), ...fields.hobbies])] : (p.hobbies||[]),
       };
     }));
     setSelectedId(personId);
