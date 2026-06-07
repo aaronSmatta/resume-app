@@ -337,6 +337,10 @@ const PersonModal = ({ person, onSave, onClose }) => {
     return base;
   });
   const set = (k,v) => setF(prev=>({...prev,[k]:v}));
+  // Birthday month/day tracked independently so selecting one doesn't clear the other
+  const _bdInit = (f.birthday || '').split('-');
+  const [bdMonth, setBdMonth] = useState(_bdInit[0] || '');
+  const [bdDay,   setBdDay  ] = useState(_bdInit[1] || '');
   const isEdit = !!person?.id;
   const valid = f.name.trim().length > 0;
 
@@ -362,18 +366,23 @@ const PersonModal = ({ person, onSave, onClose }) => {
           <div>
             <Label>Birthday</Label>
             {(() => {
-              const selStyle = { padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color: '#111827', background:'white', cursor:'pointer' };
-              const bdp = f.birthday ? f.birthday.split('-') : ['',''];
-              const bdMo = bdp[0] || ''; const bdDy = bdp[1] || '';
-              const setBd = (mo, dy) => set('birthday', (mo && dy) ? `${mo}-${dy}` : '');
+              const selStyle = { padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color:'#111827', background:'white', cursor:'pointer' };
               const months = [['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']];
               return (
                 <div style={{ display:'flex', gap:8 }}>
-                  <select value={bdMo} onChange={e=>setBd(e.target.value, bdDy)} style={{ ...selStyle, flex:1 }}>
+                  <select value={bdMonth} onChange={e => {
+                    const mo = e.target.value;
+                    setBdMonth(mo);
+                    set('birthday', mo && bdDay ? `${mo}-${bdDay}` : '');
+                  }} style={{ ...selStyle, flex:1 }}>
                     <option value="">Month</option>
                     {months.map(([v,l]) => <option key={v} value={v}>{l}</option>)}
                   </select>
-                  <select value={bdDy} onChange={e=>setBd(bdMo, e.target.value)} style={{ ...selStyle, width:90 }}>
+                  <select value={bdDay} onChange={e => {
+                    const dy = e.target.value;
+                    setBdDay(dy);
+                    set('birthday', bdMonth && dy ? `${bdMonth}-${dy}` : '');
+                  }} style={{ ...selStyle, width:90 }}>
                     <option value="">Day</option>
                     {Array.from({length:31},(_,i)=>String(i+1).padStart(2,'0')).map(d=><option key={d} value={d}>{parseInt(d)}</option>)}
                   </select>
@@ -1472,6 +1481,8 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
   };
 
   const handleReset = () => { setText(''); setParsed(null); setEditedParsed(null); };
+  // Clear parse result only — keeps text so user can tweak and re-parse
+  const handleReparse = () => { setParsed(null); setEditedParsed(null); };
 
   const canSave = editedParsed && editedParsed.intent !== 'unclear';
 
@@ -1536,14 +1547,22 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
               <span style={{ fontSize:11, color:'#d1d5db' }}>⌘↵ to {parsed ? 'save' : 'parse'}</span>
               <div style={{ display:'flex', gap:8 }}>
-                {parsed && (
+                {parsed && (<>
+                  <button onClick={handleReparse}
+                    title="Edit your text and try parsing again"
+                    style={{ padding:'7px 14px', background:'#f0f9ff', border:'1px solid #bae6fd', borderRadius:8, fontSize:13, color:'#0369a1', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#e0f2fe'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#f0f9ff'}>
+                    ↺ Re-parse
+                  </button>
                   <button onClick={handleReset}
+                    title="Clear everything and start fresh"
                     style={{ padding:'7px 14px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
                     onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
                     onMouseLeave={e => e.currentTarget.style.background = '#f9fafb'}>
-                    ← Start over
+                    ✕ Clear
                   </button>
-                )}
+                </>)}
                 {!parsed ? (
                   <button onClick={handleParse} disabled={!text.trim()}
                     style={{ padding:'7px 20px', background: text.trim() ? '#6366f1' : '#e5e7eb', color: text.trim() ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: text.trim() ? 'pointer' : 'default', transition:'all 0.15s' }}>
