@@ -9,18 +9,31 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
+    :root {
+      --accent: #F26B1D; --accent-strong: #DC5A1A; --accent-soft: #FDF1E7;
+      --bg: #F7F6F3; --surface: #FFFFFF; --border: #EDEDEC; --text: #37352F;
+    }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; }
-    ::-webkit-scrollbar { width: 5px; }
+    html, body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+    body {
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text);
+    }
+    ::-webkit-scrollbar { width: 9px; height: 9px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #e5e7eb; border-radius: 10px; }
+    ::-webkit-scrollbar-thumb { background: #DDDCD8; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: #C9C8C3; background-clip: padding-box; }
+    ::selection { background: #FBE2CE; }
     input, textarea, select { font-family: inherit; }
     input:focus, textarea:focus, select:focus { outline: none; }
     textarea { resize: vertical; }
-    .modal-bg { animation: fadeBg 0.15s ease; }
+    /* Subtle orange focus ring for a cohesive modern feel */
+    input:focus, textarea:focus { border-color: #F6CBA3 !important; box-shadow: 0 0 0 3px rgba(242,107,29,0.12); }
+    .modal-bg { animation: fadeBg 0.15s ease; backdrop-filter: blur(2px); }
     .modal-box { animation: slideUp 0.18s ease; }
     @keyframes fadeBg { from { opacity: 0; } to { opacity: 1; } }
     @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .person-row { transition: background 0.1s; }
     button { font-family: inherit; }
     @keyframes micPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
@@ -51,7 +64,19 @@ const daysSince = (ds) => {
   return Math.floor((Date.now() - new Date(ds + 'T12:00:00')) / 86400000);
 };
 const initials = (name = '') => name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2) || '?';
-const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f59e0b','#10b981','#3b82f6','#14b8a6','#f97316'];
+const COLORS = ['#F26B1D','#E8590C','#0EA5A0','#EC4899','#F59E0B','#3B82F6','#8B5CF6','#14B8A6'];
+/* ── Theme tokens (orange primary, Notion-inspired) — uppercase hex so the
+      legacy-color recolor pass leaves them untouched ──────────────────────── */
+const T = {
+  accent:'#F26B1D', accentStrong:'#DC5A1A', accentDeep:'#B7430E',
+  accentSoft:'#FDF1E7', accentSoft2:'#FBE2CE', accentBorder:'#F6CBA3',
+  teal:'#0EA5A0', tealSoft:'#E6F6F4',
+  rose:'#EC4899', roseSoft:'#FCE7F3',
+  blue:'#3B82F6', green:'#10B981', amber:'#F59E0B', red:'#EF4444',
+  bg:'#F7F6F3', surface:'#FFFFFF',
+  border:'#EDEDEC', borderStrong:'#E3E2DF',
+  text:'#37352F', textSoft:'#6B6B68', faint:'#9B9A97',
+};
 const avatarColor = (name='') => COLORS[name.charCodeAt(0) % COLORS.length] || COLORS[0];
 const lastConvDate = (p) => p.conversations?.length
   ? [...p.conversations].sort((a,b) => b.date.localeCompare(a.date))[0].date
@@ -77,6 +102,21 @@ const daysUntilBirthday = (birthdayStr) => {
   let next = new Date(today.getFullYear(), mo, dy);
   if (next < today) next = new Date(today.getFullYear()+1, mo, dy);
   return Math.floor((next - today) / 86400000);
+};
+
+// Friendly "in N days" label for an upcoming YYYY-MM-DD date
+const daysUntilLabel = (ds) => {
+  if (!ds) return '';
+  const today = new Date(); today.setHours(0,0,0,0);
+  const d = new Date(ds+'T12:00:00'); d.setHours(0,0,0,0);
+  const n = Math.round((d - today) / 86400000);
+  if (n < 0) return fmt(ds);
+  if (n === 0) return 'Today';
+  if (n === 1) return 'Tomorrow';
+  if (n < 7) return `In ${n} days`;
+  if (n < 14) return 'Next week';
+  if (n < 31) return `In ${Math.round(n/7)} weeks`;
+  return fmt(ds);
 };
 
 /* ── Resume Brief Generator ───────────────────────────────────────────────── */
@@ -226,6 +266,11 @@ const IC = {
   user: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
   pen: 'M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z',
   mic: 'M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8',
+  users: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
+  clock: 'M12 6v6l4 2M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20z',
+  list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
+  chevron: 'm6 9 6 6 6-6',
 };
 
 const Svg = ({ d, size=16, color='currentColor', style }) => (
@@ -246,18 +291,18 @@ const Label = ({ children }) => (
 );
 
 const Input = ({ style, ...props }) => (
-  <input style={{ width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color:'#111827', background:'white', ...style }} {...props} />
+  <input style={{ width:'100%', padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', background:'white', ...style }} {...props} />
 );
 
 const Textarea = ({ style, ...props }) => (
-  <textarea style={{ width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color:'#111827', lineHeight:'1.55', ...style }} {...props} />
+  <textarea style={{ width:'100%', padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', lineHeight:'1.55', ...style }} {...props} />
 );
 
 const Btn = ({ variant='primary', style, children, ...props }) => {
   const base = { padding:'9px 18px', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6, border:'none', transition:'opacity 0.1s' };
   const styles = {
-    primary: { background:'#6366f1', color:'white' },
-    secondary: { background:'white', color:'#374151', border:'1px solid #e5e7eb' },
+    primary: { background:'#F26B1D', color:'white' },
+    secondary: { background:'white', color:'#374151', border:'1px solid #E3E2DF' },
     ghost: { background:'transparent', color:'#6b7280', border:'none', padding:'6px 10px', fontWeight:500 },
   };
   return <button style={{ ...base, ...styles[variant], ...style }} {...props}>{children}</button>;
@@ -268,11 +313,11 @@ const TagInput = ({ tags=[], onChange, placeholder='Add, press Enter...' }) => {
   const [val, setVal] = useState('');
   const add = () => { const t = val.trim(); if (t && !tags.includes(t)) onChange([...tags, t]); setVal(''); };
   return (
-    <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', padding:'7px 10px', border:'1px solid #e5e7eb', borderRadius:8, background:'white', minHeight:40 }}>
+    <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', padding:'7px 10px', border:'1px solid #E3E2DF', borderRadius:8, background:'white', minHeight:40 }}>
       {tags.map(t => (
-        <span key={t} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', background:'#eef2ff', color:'#4f46e5', borderRadius:99, fontSize:13 }}>
+        <span key={t} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', background:'#FDF1E7', color:'#DC5A1A', borderRadius:99, fontSize:13 }}>
           {t}
-          <button onClick={() => onChange(tags.filter(x=>x!==t))} style={{ background:'none', border:'none', cursor:'pointer', color:'#6366f1', lineHeight:1, fontSize:16, padding:0, marginLeft:1 }}>×</button>
+          <button onClick={() => onChange(tags.filter(x=>x!==t))} style={{ background:'none', border:'none', cursor:'pointer', color:'#F26B1D', lineHeight:1, fontSize:16, padding:0, marginLeft:1 }}>×</button>
         </span>
       ))}
       <input value={val} onChange={e=>setVal(e.target.value)}
@@ -289,9 +334,9 @@ const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...'
   const [val, setVal] = useState('');
   const add = () => { const t = val.trim(); if (t) { onChange([...items, t]); setVal(''); } };
   return (
-    <div style={{ border:'1px solid #e5e7eb', borderRadius:8, overflow:'hidden' }}>
+    <div style={{ border:'1px solid #E3E2DF', borderRadius:8, overflow:'hidden' }}>
       {items.map((item, i) => (
-        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', background:'white', borderBottom:'1px solid #f3f4f6' }}>
+        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', background:'white', borderBottom:'1px solid #EDEDEC' }}>
           <span style={{ color:'#9ca3af', marginTop:3, flexShrink:0, fontSize:12 }}>•</span>
           <span style={{ flex:1, fontSize:14, color:'#374151', lineHeight:'1.45' }}>{item}</span>
           <button onClick={() => onChange(items.filter((_,j)=>j!==i))}
@@ -302,7 +347,7 @@ const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...'
           </button>
         </div>
       ))}
-      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', background:'#fafafa' }}>
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', background:'#F7F6F3' }}>
         <span style={{ color:'#d1d5db', fontSize:16, flexShrink:0 }}>+</span>
         <input value={val} onChange={e=>setVal(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){e.preventDefault();add();} }}
@@ -315,7 +360,7 @@ const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...'
 
 /* ── Toggle ───────────────────────────────────────────────────────────────── */
 const Toggle = ({ on, onChange }) => (
-  <button onClick={() => onChange(!on)} style={{ width:40, height:22, borderRadius:11, background:on?'#6366f1':'#d1d5db', border:'none', cursor:'pointer', position:'relative', transition:'background 0.2s', flexShrink:0 }}>
+  <button onClick={() => onChange(!on)} style={{ width:40, height:22, borderRadius:11, background:on?'#F26B1D':'#d1d5db', border:'none', cursor:'pointer', position:'relative', transition:'background 0.2s', flexShrink:0 }}>
     <span style={{ position:'absolute', top:2, left:on?20:2, width:18, height:18, borderRadius:'50%', background:'white', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.15)' }} />
   </button>
 );
@@ -327,9 +372,62 @@ const Avatar = ({ name, size=40 }) => (
   </div>
 );
 
+/* ── Contact multi-select (used by group logs + events) ───────────────────── */
+const ContactMultiSelect = ({ people, selectedIds, onChange, lockedId, placeholder='Add people who were there…' }) => {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  useEffect(() => {
+    const close = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, []);
+  const selected = selectedIds.map(id => people.find(p=>p.id===id)).filter(Boolean);
+  const matches = people
+    .filter(p => !selectedIds.includes(p.id))
+    .filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
+    .slice(0, 6);
+  const add = (id) => { onChange([...selectedIds, id]); setQ(''); };
+  const remove = (id) => { if (id === lockedId) return; onChange(selectedIds.filter(x=>x!==id)); };
+  return (
+    <div ref={wrapRef} style={{ position:'relative' }}>
+      <div onClick={()=>setOpen(true)}
+        style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', padding:'7px 10px', border:`1px solid ${T.borderStrong}`, borderRadius:8, background:T.surface, minHeight:40, cursor:'text' }}>
+        {selected.map(p => (
+          <span key={p.id} style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'3px 6px 3px 4px', background:T.accentSoft, color:T.accentDeep, borderRadius:99, fontSize:13, fontWeight:500 }}>
+            <Avatar name={p.name} size={18} />{p.name}
+            {p.id !== lockedId && (
+              <button onClick={(e)=>{ e.stopPropagation(); remove(p.id); }} style={{ background:'none', border:'none', cursor:'pointer', color:T.accent, lineHeight:1, fontSize:15, padding:0 }}>×</button>
+            )}
+          </span>
+        ))}
+        <input value={q} onFocus={()=>setOpen(true)} onChange={e=>{ setQ(e.target.value); setOpen(true); }}
+          placeholder={selected.length ? '' : placeholder}
+          style={{ border:'none', outline:'none', flex:1, minWidth:120, fontSize:14, background:'transparent', color:T.text }} />
+      </div>
+      {open && matches.length > 0 && (
+        <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:50, background:T.surface, border:`1px solid ${T.borderStrong}`, borderRadius:10, boxShadow:'0 8px 28px rgba(0,0,0,0.12)', padding:'4px 0', maxHeight:220, overflowY:'auto' }}>
+          {matches.map(p => (
+            <button key={p.id} onClick={()=>add(p.id)}
+              style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'8px 12px', background:'none', border:'none', cursor:'pointer', textAlign:'left' }}
+              onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+              onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+              <Avatar name={p.name} size={26} />
+              <div style={{ minWidth:0 }}>
+                <p style={{ fontSize:13, fontWeight:600, color:T.text, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</p>
+                {(p.role||p.company) && <p style={{ fontSize:11, color:T.faint }}>{[p.role,p.company].filter(Boolean).join(' · ')}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Person Modal ─────────────────────────────────────────────────────────── */
 const PersonModal = ({ person, onSave, onClose }) => {
-  const blank = { id:uid(), name:'', role:'', company:'', howMet:'', hometown:'', so:'', kids:[], birthday:'', hobbies:[], groups:[], additionalInfo:'', followUpEnabled:true, followUpDays:60, createdAt:new Date().toISOString().slice(0,10), conversations:[] };
+  const blank = { id:uid(), name:'', role:'', company:'', howMet:'', hometown:'', so:'', kids:[], birthday:'', hobbies:[], groups:[], additionalInfo:'', followUpEnabled:true, followUpDays:60, createdAt:new Date().toISOString().slice(0,10), conversations:[], events:[] };
   const [f, setF] = useState(() => {
     const base = { ...blank, ...(person||{}) };
     // Migrate legacy "YYYY-MM-DD" birthday → "MM-DD"
@@ -347,7 +445,7 @@ const PersonModal = ({ person, onSave, onClose }) => {
   return (
     <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal-box" style={{ background:'white', borderRadius:16, width:'100%', maxWidth:520, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
             <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit contact' : 'Add new contact'}</h2>
             <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>Fill in what you know — you can always add more later</p>
@@ -366,7 +464,7 @@ const PersonModal = ({ person, onSave, onClose }) => {
           <div>
             <Label>Birthday</Label>
             {(() => {
-              const selStyle = { padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:14, color:'#111827', background:'white', cursor:'pointer' };
+              const selStyle = { padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', background:'white', cursor:'pointer' };
               const months = [['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']];
               return (
                 <div style={{ display:'flex', gap:8 }}>
@@ -426,9 +524,9 @@ const PersonModal = ({ person, onSave, onClose }) => {
             <Label>Additional info</Label>
             <textarea value={f.additionalInfo||''} onChange={e=>set('additionalInfo',e.target.value)} rows={3}
               placeholder="Anything else worth remembering…"
-              style={{ width:'100%', padding:'9px 12px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, lineHeight:'1.5', resize:'vertical', color:'#374151', background:'#fafafa', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
-              onFocus={e=>e.currentTarget.style.borderColor='#a5b4fc'}
-              onBlur={e=>e.currentTarget.style.borderColor='#e5e7eb'} />
+              style={{ width:'100%', padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:13, lineHeight:'1.5', resize:'vertical', color:'#374151', background:'#F7F6F3', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
+              onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'}
+              onBlur={e=>e.currentTarget.style.borderColor='#E3E2DF'} />
           </div>
 
           {/* 10. Groups */}
@@ -444,7 +542,7 @@ const PersonModal = ({ person, onSave, onClose }) => {
           </div>
 
           {/* 12. Follow-up reminder */}
-          <div style={{ padding:'14px 16px', background:'#f9fafb', borderRadius:10, border:'1px solid #f0f0f0' }}>
+          <div style={{ padding:'14px 16px', background:'#F7F6F3', borderRadius:10, border:'1px solid #EAEAE8' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: f.followUpEnabled ? 12 : 0 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <Icon name="bell" size={15} color="#6b7280" />
@@ -457,14 +555,14 @@ const PersonModal = ({ person, onSave, onClose }) => {
                 <span>Remind me if I haven't talked in</span>
                 <input type="number" value={f.followUpDays} min={1}
                   onChange={e=>set('followUpDays', parseInt(e.target.value)||30)}
-                  style={{ width:56, padding:'4px 8px', border:'1px solid #e5e7eb', borderRadius:6, fontSize:14, textAlign:'center' }} />
+                  style={{ width:56, padding:'4px 8px', border:'1px solid #E3E2DF', borderRadius:6, fontSize:14, textAlign:'center' }} />
                 <span>days</span>
               </div>
             )}
           </div>
         </div>
 
-        <div style={{ padding:'14px 24px', borderTop:'1px solid #f3f4f6', display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <div style={{ padding:'14px 24px', borderTop:'1px solid #EDEDEC', display:'flex', gap:8, justifyContent:'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={() => valid && onSave(f)} style={{ opacity: valid ? 1 : 0.5, cursor: valid ? 'pointer' : 'default' }}>
             {isEdit ? 'Save changes' : 'Add contact'}
@@ -476,24 +574,36 @@ const PersonModal = ({ person, onSave, onClose }) => {
 };
 
 /* ── Conversation Modal ───────────────────────────────────────────────────── */
-const ConvModal = ({ conv, personName, onSave, onClose }) => {
+const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lockedId=null, onSave, onClose }) => {
   const blank = { id:uid(), date:new Date().toISOString().slice(0,10), location:'', topics:[], insights:'', openQuestions:[], followUps:[], notes:'', nextMeeting:'', nextMeetingNote:'' };
   const [f, setF] = useState(conv || blank);
   const set = (k,v) => setF(prev=>({...prev,[k]:v}));
   const isEdit = !!conv?.id;
+  const [participantIds, setParticipantIds] = useState(initialParticipantIds);
+  // Group selector shown only when creating a new log (editing stays single-contact)
+  const showParticipants = !isEdit;
+  const isGroup = participantIds.length > 1;
+  const canSave = isEdit || participantIds.length > 0;
 
   return (
     <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
       <div className="modal-box" style={{ background:'white', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
-            <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit conversation' : 'Log a conversation'}</h2>
-            {personName && <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>with {personName}</p>}
+            <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit conversation' : isGroup ? 'Log a group gathering' : 'Log a conversation'}</h2>
+            {isEdit && personName && <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>with {personName}</p>}
+            {!isEdit && <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>{isGroup ? `Saved to all ${participantIds.length} people below` : 'Add who was there — log it for one person or a whole group'}</p>}
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
         </div>
 
         <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:18 }}>
+          {showParticipants && (
+            <div>
+              <Label>Who was there?</Label>
+              <ContactMultiSelect people={people} selectedIds={participantIds} onChange={setParticipantIds} lockedId={lockedId} placeholder="Search contacts to add…" />
+            </div>
+          )}
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
             <div>
               <Label>Date</Label>
@@ -536,8 +646,8 @@ const ConvModal = ({ conv, personName, onSave, onClose }) => {
               style={{ minHeight:56 }} />
           </div>
 
-          <div style={{ padding:'12px 14px', background:'#f5f3ff', borderRadius:8, border:'1px solid #e0e7ff' }}>
-            <p style={{ fontSize:11, fontWeight:700, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>📅 Next planned contact</p>
+          <div style={{ padding:'12px 14px', background:'#FDF1E7', borderRadius:8, border:'1px solid #FBE2CE' }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>📅 Next planned contact</p>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
               <div>
                 <Label>Date</Label>
@@ -552,10 +662,10 @@ const ConvModal = ({ conv, personName, onSave, onClose }) => {
           </div>
         </div>
 
-        <div style={{ padding:'14px 24px', borderTop:'1px solid #f3f4f6', display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <div style={{ padding:'14px 24px', borderTop:'1px solid #EDEDEC', display:'flex', gap:8, justifyContent:'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => onSave(f)}>
-            {isEdit ? 'Save changes' : '▶ Log conversation'}
+          <Btn onClick={() => canSave && onSave(f, participantIds)} style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}>
+            {isEdit ? 'Save changes' : isGroup ? `▶ Log for ${participantIds.length} people` : '▶ Log conversation'}
           </Btn>
         </div>
       </div>
@@ -569,7 +679,7 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
   const hasBody = conv.insights || conv.openQuestions?.length || conv.followUps?.length || conv.notes;
 
   return (
-    <div style={{ border:'1px solid #f0f0f0', borderRadius:10, overflow:'hidden', marginBottom:10, background:'white', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+    <div style={{ border:'1px solid #EAEAE8', borderRadius:10, overflow:'hidden', marginBottom:10, background:'white', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
       <div style={{ padding:'12px 14px', cursor: hasBody ? 'pointer' : 'default' }}
         onClick={() => hasBody && setOpen(o=>!o)}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
@@ -581,11 +691,16 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
                   <Icon name="pin" size={11} color="#9ca3af" />{conv.location}
                 </span>
               )}
+              {conv.participants?.length > 1 && (
+                <span title={conv.participants.join(', ')} style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'1px 8px', background:T.accentSoft, color:T.accentDeep, borderRadius:99, fontSize:11, fontWeight:600 }}>
+                  <Icon name="users" size={11} color={T.accent} />Group · {conv.participants.length}
+                </span>
+              )}
             </div>
             {conv.topics?.length > 0 && (
               <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                 {conv.topics.map(t => (
-                  <span key={t} style={{ padding:'2px 8px', background:'#f3f4f6', borderRadius:99, fontSize:12, color:'#6b7280' }}>{t}</span>
+                  <span key={t} style={{ padding:'2px 8px', background:'#EDEDEC', borderRadius:99, fontSize:12, color:'#6b7280' }}>{t}</span>
                 ))}
               </div>
             )}
@@ -593,7 +708,7 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
           <div style={{ display:'flex', alignItems:'center', gap:2, flexShrink:0 }}>
             <button onClick={e=>{e.stopPropagation();onEdit(conv);}}
               style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'4px 5px', borderRadius:6 }}
-              onMouseEnter={e=>e.currentTarget.style.color='#6366f1'}
+              onMouseEnter={e=>e.currentTarget.style.color='#F26B1D'}
               onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
               <Icon name="edit" size={14} color="currentColor" />
             </button>
@@ -614,7 +729,7 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
       </div>
 
       {open && hasBody && (
-        <div style={{ padding:'2px 14px 14px', borderTop:'1px solid #f9fafb' }}>
+        <div style={{ padding:'2px 14px 14px', borderTop:'1px solid #F7F6F3' }}>
           {conv.insights && (
             <Section label="Insights">
               <p style={{ fontSize:14, color:'#374151', lineHeight:'1.6', margin:0 }}>{conv.insights}</p>
@@ -633,7 +748,7 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
             <Section label="Follow-ups">
               {conv.followUps.map((f,i) => (
                 <p key={i} style={{ fontSize:14, color:'#374151', display:'flex', gap:8, margin:'4px 0', alignItems:'flex-start' }}>
-                  <span style={{ color:'#6366f1', flexShrink:0 }}>→</span>{f}
+                  <span style={{ color:'#F26B1D', flexShrink:0 }}>→</span>{f}
                 </p>
               ))}
             </Section>
@@ -662,24 +777,24 @@ const ResumeCard = ({ person }) => {
 
   // No conversations yet
   if (!brief) return (
-    <div style={{ background:'linear-gradient(135deg,#f5f3ff,#eef2ff)', border:'1px solid #c7d2fe', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+    <div style={{ background:'linear-gradient(135deg,#FDF1E7,#FDF1E7)', border:'1px solid #F6CBA3', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
       <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
-        <span style={{ color:'#6366f1', fontSize:15 }}>▶</span>
-        <span style={{ fontSize:11, fontWeight:800, color:'#4f46e5', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
+        <span style={{ color:'#F26B1D', fontSize:15 }}>▶</span>
+        <span style={{ fontSize:11, fontWeight:800, color:'#DC5A1A', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
       </div>
       <p style={{ fontSize:14, color:'#6b7280', fontStyle:'italic' }}>Log your first conversation to generate a prep brief.</p>
     </div>
   );
 
   return (
-    <div style={{ background:'linear-gradient(135deg,#f5f3ff,#eef2ff)', border:'1px solid #c7d2fe', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+    <div style={{ background:'linear-gradient(135deg,#FDF1E7,#FDF1E7)', border:'1px solid #F6CBA3', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-          <span style={{ color:'#6366f1', fontSize:15 }}>▶</span>
-          <span style={{ fontSize:11, fontWeight:800, color:'#4f46e5', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
+          <span style={{ color:'#F26B1D', fontSize:15 }}>▶</span>
+          <span style={{ fontSize:11, fontWeight:800, color:'#DC5A1A', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
         </div>
-        <span style={{ fontSize:12, color:'#818cf8' }}>{fmt(brief.lastDate)}</span>
+        <span style={{ fontSize:12, color:'#F0A668' }}>{fmt(brief.lastDate)}</span>
       </div>
 
       {/* Synopsis paragraph */}
@@ -690,10 +805,10 @@ const ResumeCard = ({ person }) => {
       {/* Pick up on */}
       {brief.pickUpOn.length > 0 && (
         <div style={{ marginBottom: brief.starters.length ? 12 : 0 }}>
-          <p style={{ fontSize:10, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Pick up on</p>
+          <p style={{ fontSize:10, fontWeight:800, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Pick up on</p>
           {brief.pickUpOn.map((item,i) => (
             <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:5 }}>
-              <span style={{ fontWeight:700, flexShrink:0, fontSize:13, color: item.type==='question' ? '#f59e0b' : '#6366f1', marginTop:1 }}>
+              <span style={{ fontWeight:700, flexShrink:0, fontSize:13, color: item.type==='question' ? '#f59e0b' : '#F26B1D', marginTop:1 }}>
                 {item.type==='question' ? '?' : '→'}
               </span>
               <span style={{ fontSize:13, color:'#374151', lineHeight:'1.5' }}>{item.text}</span>
@@ -705,7 +820,7 @@ const ResumeCard = ({ person }) => {
       {/* Conversation starters */}
       {brief.starters.length > 0 && (
         <div>
-          <p style={{ fontSize:10, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Conversation starters</p>
+          <p style={{ fontSize:10, fontWeight:800, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Conversation starters</p>
           {brief.starters.map((s,i) => (
             <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:5 }}>
               <span style={{ fontSize:13, flexShrink:0, marginTop:1 }}>💡</span>
@@ -719,9 +834,17 @@ const ResumeCard = ({ person }) => {
 };
 
 /* ── Person Detail ────────────────────────────────────────────────────────── */
-const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv }) => {
+const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv, onSchedule, onEditEvent, onDeleteEvent }) => {
   const sorted = [...(person.conversations||[])].sort((a,b)=>b.date.localeCompare(a.date));
   const status = getStatus(person);
+  const todayStr = new Date().toISOString().slice(0,10);
+  // Upcoming: standalone events + meetings scheduled from conversations
+  const upcoming = useMemo(() => {
+    const out = [];
+    (person.events||[]).forEach(ev => { if (ev.date >= todayStr) out.push({ kind:'event', id:ev.id, date:ev.date, time:ev.time, title:ev.title||'Event', location:ev.location, participants:ev.participants, raw:ev }); });
+    (person.conversations||[]).forEach(c => { if (c.nextMeeting && c.nextMeeting >= todayStr) out.push({ kind:'meeting', id:c.id, date:c.nextMeeting, title:c.nextMeetingNote||'Catch-up' }); });
+    return out.sort((a,b)=>a.date.localeCompare(b.date));
+  }, [person]);
   const allTopics = useMemo(() => {
     const counts = {};
     sorted.flatMap(c=>c.topics||[]).forEach(t=>{ counts[t]=(counts[t]||0)+1; });
@@ -731,7 +854,7 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
   return (
     <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
       {/* Top bar */}
-      <div style={{ padding:'14px 24px', background:'white', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'center', gap:12 }}>
+      <div style={{ padding:'14px 24px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
         <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, display:'flex', alignItems:'center' }}
           onMouseEnter={e=>e.currentTarget.style.color='#374151'} onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>
           <Icon name="back" size={20} color="currentColor" />
@@ -746,6 +869,9 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
         <div style={{ display:'flex', gap:6 }}>
           <Btn onClick={onAddConv} style={{ fontSize:13 }}>
             <Icon name="plus" size={14} color="white" />Log conversation
+          </Btn>
+          <Btn variant="secondary" onClick={onSchedule} style={{ fontSize:13 }}>
+            <Icon name="calendar" size={14} color="#6b7280" />Schedule
           </Btn>
           <Btn variant="secondary" onClick={()=>onEditPerson(person)} style={{ padding:'8px 10px' }}>
             <Icon name="edit" size={15} color="#6b7280" />
@@ -765,6 +891,50 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
 
         {/* Resume Brief */}
         <ResumeCard person={person} />
+
+        {/* Upcoming events & meetings */}
+        {upcoming.length > 0 && (
+          <div style={{ background:T.surface, borderRadius:12, padding:'14px 18px', border:`1px solid ${T.accentBorder}`, marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+              <Icon name="calendar" size={15} color={T.accent} />
+              <h3 style={{ fontSize:13, fontWeight:700, color:'#111827' }}>Upcoming</h3>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {upcoming.map(u => {
+                const d = new Date(u.date+'T12:00:00');
+                const dd = daysUntilLabel(u.date);
+                return (
+                  <div key={u.kind+u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:T.bg, borderRadius:9, border:`1px solid ${T.border}` }}>
+                    <div style={{ width:42, textAlign:'center', flexShrink:0 }}>
+                      <p style={{ fontSize:10, fontWeight:700, color:T.accent, textTransform:'uppercase', lineHeight:1 }}>{d.toLocaleDateString('en-US',{month:'short'})}</p>
+                      <p style={{ fontSize:17, fontWeight:800, color:'#111827', lineHeight:1.1 }}>{d.getDate()}</p>
+                    </div>
+                    <div style={{ flex:1, minWidth:0 }}>
+                      <p style={{ fontSize:13, fontWeight:600, color:'#111827' }}>{[u.time, u.title].filter(Boolean).join(' · ')}</p>
+                      <p style={{ fontSize:11, color:'#9ca3af' }}>
+                        {dd}{u.location ? ` · ${u.location}` : ''}{u.participants?.length>1 ? ` · with ${u.participants.length} people` : (u.kind==='meeting' ? ' · from a conversation' : '')}
+                      </p>
+                    </div>
+                    {u.kind==='event' && (
+                      <div style={{ display:'flex', gap:2, flexShrink:0 }}>
+                        <button onClick={()=>onEditEvent(u.raw)} title="Edit"
+                          style={{ background:'none', border:'none', cursor:'pointer', color:'#c4c8d4', padding:4 }}
+                          onMouseEnter={e=>e.currentTarget.style.color=T.accent} onMouseLeave={e=>e.currentTarget.style.color='#c4c8d4'}>
+                          <Icon name="edit" size={14} color="currentColor" />
+                        </button>
+                        <button onClick={()=>onDeleteEvent(person.id, u.id)} title="Delete"
+                          style={{ background:'none', border:'none', cursor:'pointer', color:'#c4c8d4', padding:4 }}
+                          onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='#c4c8d4'}>
+                          <Icon name="trash" size={14} color="currentColor" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Status alert */}
         {person.followUpEnabled && (status==='overdue'||status==='soon'||status==='new') && (
@@ -803,7 +973,7 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
               <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Interests</p>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                 {person.hobbies.map(h => (
-                  <span key={h} style={{ padding:'3px 10px', background:'#eef2ff', color:'#4f46e5', borderRadius:99, fontSize:13 }}>{h}</span>
+                  <span key={h} style={{ padding:'3px 10px', background:'#FDF1E7', color:'#DC5A1A', borderRadius:99, fontSize:13 }}>{h}</span>
                 ))}
               </div>
             </div>
@@ -824,7 +994,7 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
           <Card title={`Themes across ${sorted.length} conversations`}>
             <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
               {allTopics.map(([t,n]) => (
-                <span key={t} style={{ padding:'3px 10px', background:'#f3f4f6', borderRadius:99, fontSize:12, color:'#374151' }}>
+                <span key={t} style={{ padding:'3px 10px', background:'#EDEDEC', borderRadius:99, fontSize:12, color:'#374151' }}>
                   {t}{n>1 && <span style={{ color:'#9ca3af', fontSize:11, marginLeft:3 }}>×{n}</span>}
                 </span>
               ))}
@@ -841,7 +1011,7 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
           </div>
           {sorted.length === 0 ? (
             <div style={{ textAlign:'center', padding:'36px 20px' }}>
-              <Icon name="msg" size={32} color="#e5e7eb" />
+              <Icon name="msg" size={32} color="#E3E2DF" />
               <p style={{ marginTop:8, fontSize:14, color:'#9ca3af' }}>No conversations logged yet</p>
             </div>
           ) : (
@@ -860,7 +1030,7 @@ const PersonDetail = ({ person, onBack, onEditPerson, onDeletePerson, onAddConv,
 };
 
 const Card = ({ title, children }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', marginBottom:14, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', border:'1px solid #f3f4f6' }}>
+  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', marginBottom:14, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', border:'1px solid #EDEDEC' }}>
     <h3 style={{ fontSize:11, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>{title}</h3>
     {children}
   </div>
@@ -878,11 +1048,11 @@ const Chip = ({ active, onClick, children }) => (
   <button onClick={onClick}
     style={{ padding:'4px 11px', borderRadius:99, border:'none', cursor:'pointer', fontSize:12,
       fontWeight: active ? 700 : 500, whiteSpace:'nowrap',
-      background: active ? '#6366f1' : '#f3f4f6',
+      background: active ? '#F26B1D' : '#EDEDEC',
       color: active ? 'white' : '#6b7280',
       transition:'all 0.15s' }}
-    onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='#e5e7eb'; }}
-    onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='#f3f4f6'; }}>
+    onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='#E3E2DF'; }}
+    onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='#EDEDEC'; }}>
     {children}
   </button>
 );
@@ -982,11 +1152,11 @@ const SearchResults = ({ results, query, onSelect, selectedId }) => {
           <div key={person.id}
             onClick={() => onSelect(person.id)}
             style={{ padding:'10px 11px', borderRadius:10, cursor:'pointer', marginBottom:5,
-              background: sel ? '#eef2ff' : 'white',
-              border: `1px solid ${sel?'#c7d2fe':'#f0f0f0'}`,
+              background: sel ? '#FDF1E7' : 'white',
+              border: `1px solid ${sel?'#F6CBA3':'#EAEAE8'}`,
               boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}
-            onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#f9fafb'; }}
-            onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'#eef2ff':'white'; }}>
+            onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#F7F6F3'; }}
+            onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'#FDF1E7':'white'; }}>
 
             {/* Person header */}
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: matches.length ? 7 : 0 }}>
@@ -1006,7 +1176,7 @@ const SearchResults = ({ results, query, onSelect, selectedId }) => {
             {/* Match reasons */}
             {matches.map((m, i) => (
               <div key={i} style={{ display:'flex', gap:6, alignItems:'flex-start', marginTop: i===0 ? 0 : 4,
-                padding:'5px 8px', background: sel ? 'rgba(255,255,255,0.6)' : '#f9fafb', borderRadius:6 }}>
+                padding:'5px 8px', background: sel ? 'rgba(255,255,255,0.6)' : '#F7F6F3', borderRadius:6 }}>
                 <span style={{ fontSize:12, flexShrink:0, lineHeight:'1.5', marginTop:1 }}>{m.icon}</span>
                 <span style={{ fontSize:12, color:'#4b5563', lineHeight:'1.5', flex:1, minWidth:0, wordBreak:'break-word' }}>
                   <Highlight text={m.text} query={query} />
@@ -1195,14 +1365,14 @@ const EditRow = ({ icon, label, children }) => (
 const inlineInput = (value, onChange, placeholder, type='text') => (
   <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
     style={{ flex:1, padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'white' }}
-    onFocus={e=>e.currentTarget.style.borderColor='#a5b4fc'}
+    onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'}
     onBlur={e=>e.currentTarget.style.borderColor='#d1d5db'} />
 );
 
 const arrayInput = (arr, onChange, placeholder) => (
   <input type="text" value={(arr||[]).join(', ')} onChange={e=>onChange(e.target.value.split(',').map(s=>s.trim()).filter(Boolean))} placeholder={placeholder}
     style={{ flex:1, padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'white' }}
-    onFocus={e=>e.currentTarget.style.borderColor='#a5b4fc'}
+    onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'}
     onBlur={e=>e.currentTarget.style.borderColor='#d1d5db'} />
 );
 
@@ -1497,10 +1667,10 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
       <div style={{ background:'white', borderRadius:16, width:'100%', maxWidth:580, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.18)' }}>
 
         {/* Header */}
-        <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexShrink:0 }}>
           <div>
             <h2 style={{ fontSize:17, fontWeight:800, color:'#111827', display:'flex', alignItems:'center', gap:8 }}>
-              <Icon name="pen" size={16} color="#6366f1" /> Quick capture
+              <Icon name="pen" size={16} color="#F26B1D" /> Quick capture
             </h2>
             <p style={{ fontSize:12, color:'#9ca3af', marginTop:3 }}>Type what you remember — I'll pull out the key details</p>
           </div>
@@ -1528,19 +1698,19 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 
         {/* Input + actions */}
         {!saved && (
-          <div style={{ padding:'14px 22px 20px', borderTop:'1px solid #f3f4f6', flexShrink:0 }}>
+          <div style={{ padding:'14px 22px 20px', borderTop:'1px solid #EDEDEC', flexShrink:0 }}>
             <div style={{ position:'relative' }}>
               <textarea ref={textRef} value={text} onChange={e => setText(e.target.value)} rows={4}
                 placeholder={"What do you remember? (or tap the mic and speak)"}
-                style={{ width:'100%', padding:'11px 42px 11px 13px', border:'1px solid #e5e7eb', borderRadius:10, fontSize:13, lineHeight:'1.55', resize:'vertical', color:'#374151', background:'#fafafa', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
-                onFocus={e => e.currentTarget.style.borderColor = listening ? '#f87171' : '#a5b4fc'}
-                onBlur={e => e.currentTarget.style.borderColor = listening ? '#f87171' : '#e5e7eb'}
+                style={{ width:'100%', padding:'11px 42px 11px 13px', border:'1px solid #E3E2DF', borderRadius:10, fontSize:13, lineHeight:'1.55', resize:'vertical', color:'#374151', background:'#F7F6F3', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
+                onFocus={e => e.currentTarget.style.borderColor = listening ? '#f87171' : '#F6CBA3'}
+                onBlur={e => e.currentTarget.style.borderColor = listening ? '#f87171' : '#E3E2DF'}
                 onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); parsed ? handleSave() : handleParse(); } }}
               />
               <button onClick={toggleMic} title={listening ? 'Stop dictation' : 'Start dictation'}
-                style={{ position:'absolute', top:10, right:10, padding:6, borderRadius:7, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', background: listening ? '#ef4444' : '#f3f4f6', color: listening ? 'white' : '#6b7280', animation: listening ? 'micPulse 1.2s ease-in-out infinite' : 'none', transition:'background 0.15s, color 0.15s' }}
-                onMouseEnter={e => { if (!listening) { e.currentTarget.style.background='#e5e7eb'; } }}
-                onMouseLeave={e => { if (!listening) { e.currentTarget.style.background='#f3f4f6'; } }}>
+                style={{ position:'absolute', top:10, right:10, padding:6, borderRadius:7, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', background: listening ? '#ef4444' : '#EDEDEC', color: listening ? 'white' : '#6b7280', animation: listening ? 'micPulse 1.2s ease-in-out infinite' : 'none', transition:'background 0.15s, color 0.15s' }}
+                onMouseEnter={e => { if (!listening) { e.currentTarget.style.background='#E3E2DF'; } }}
+                onMouseLeave={e => { if (!listening) { e.currentTarget.style.background='#EDEDEC'; } }}>
                 <Icon name="mic" size={16} color="currentColor" />
               </button>
             </div>
@@ -1557,20 +1727,20 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
                   </button>
                   <button onClick={handleReset}
                     title="Clear everything and start fresh"
-                    style={{ padding:'7px 14px', background:'#f9fafb', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#f3f4f6'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#f9fafb'}>
+                    style={{ padding:'7px 14px', background:'#F7F6F3', border:'1px solid #E3E2DF', borderRadius:8, fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#EDEDEC'}
+                    onMouseLeave={e => e.currentTarget.style.background = '#F7F6F3'}>
                     ✕ Clear
                   </button>
                 </>)}
                 {!parsed ? (
                   <button onClick={handleParse} disabled={!text.trim()}
-                    style={{ padding:'7px 20px', background: text.trim() ? '#6366f1' : '#e5e7eb', color: text.trim() ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: text.trim() ? 'pointer' : 'default', transition:'all 0.15s' }}>
+                    style={{ padding:'7px 20px', background: text.trim() ? '#F26B1D' : '#E3E2DF', color: text.trim() ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: text.trim() ? 'pointer' : 'default', transition:'all 0.15s' }}>
                     Parse →
                   </button>
                 ) : (
                   <button onClick={handleSave} disabled={!canSave}
-                    style={{ padding:'7px 20px', background: canSave ? '#6366f1' : '#e5e7eb', color: canSave ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: canSave ? 'pointer' : 'default' }}>
+                    style={{ padding:'7px 20px', background: canSave ? '#F26B1D' : '#E3E2DF', color: canSave ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: canSave ? 'pointer' : 'default' }}>
                     Save →
                   </button>
                 )}
@@ -1584,8 +1754,16 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 };
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
-const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, search, setSearch, sortBy, setSortBy, saveStatus }) => {
+const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, search, setSearch, sortBy, setSortBy, saveStatus }) => {
   const [activeGroup, setActiveGroup] = useState(null);
+  const [addMenu, setAddMenu] = useState(false);
+  const addRef = useRef(null);
+  useEffect(() => {
+    if (!addMenu) return;
+    const close = (e) => { if (addRef.current && !addRef.current.contains(e.target)) setAddMenu(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [addMenu]);
   const overdueCount = people.filter(p=>getStatus(p)==='overdue').length;
   const isSearching = search.trim().length > 0;
 
@@ -1614,7 +1792,7 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
   }, [people, search, isSearching, activeGroup]);
 
   return (
-    <div style={{ width:300, flexShrink:0, background:'white', borderRight:'1px solid #f0f0f0', display:'flex', flexDirection:'column', height:'100%' }}>
+    <div style={{ width:300, flexShrink:0, background:'white', borderRight:'1px solid #EAEAE8', display:'flex', flexDirection:'column', height:'100%' }}>
       {/* Header */}
       <div style={{ padding:'18px 16px 12px' }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
@@ -1622,34 +1800,59 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
             style={{ background:'none', border:'none', cursor:'pointer', padding:0, textAlign:'left', transition:'opacity 0.15s' }}
             onMouseEnter={e=>e.currentTarget.style.opacity='0.75'}
             onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
-            <div style={{ fontSize:22, fontWeight:900, color:'#4f46e5', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
+            <div style={{ fontSize:22, fontWeight:900, color:'#DC5A1A', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
             <div style={{ fontSize:11, color:'#9ca3af', marginTop:2, letterSpacing:'0.03em' }}>Remember what matters</div>
-            {saveStatus === 'saving'  && <div style={{ fontSize:10, color:'#6366f1', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#6366f1', animation:'pulse 1s infinite' }}></span>Saving…</div>}
+            {saveStatus === 'saving'  && <div style={{ fontSize:10, color:'#F26B1D', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#F26B1D', animation:'pulse 1s infinite' }}></span>Saving…</div>}
             {saveStatus === 'pending' && <div style={{ fontSize:10, color:'#f59e0b', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#f59e0b' }}></span>Unsaved changes</div>}
           </button>
           <div style={{ display:'flex', gap:6 }}>
             <button onClick={onQuickCapture} title="Quick capture"
-              style={{ width:34, height:34, borderRadius:10, background:'#f0f0ff', border:'1px solid #c7d2fe', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s' }}
-              onMouseEnter={e=>{ e.currentTarget.style.background='#e0e7ff'; e.currentTarget.style.transform='scale(1.05)'; }}
-              onMouseLeave={e=>{ e.currentTarget.style.background='#f0f0ff'; e.currentTarget.style.transform='scale(1)'; }}>
-              <Icon name="pen" size={15} color="#6366f1" />
+              style={{ width:34, height:34, borderRadius:10, background:'#FDF1E7', border:'1px solid #F6CBA3', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s' }}
+              onMouseEnter={e=>{ e.currentTarget.style.background='#FBE2CE'; e.currentTarget.style.transform='scale(1.05)'; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background='#FDF1E7'; e.currentTarget.style.transform='scale(1)'; }}>
+              <Icon name="pen" size={15} color="#F26B1D" />
             </button>
-            <button onClick={onAddPerson} title="Add contact"
-              style={{ width:34, height:34, borderRadius:10, background:'#6366f1', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(99,102,241,0.35)', transition:'transform 0.1s' }}
-              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'}
-              onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
-              <Icon name="plus" size={18} color="white" />
-            </button>
+            <div ref={addRef} style={{ position:'relative' }}>
+              <button onClick={()=>setAddMenu(m=>!m)} title="Add"
+                style={{ width:34, height:34, borderRadius:10, background:'#F26B1D', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(242,107,29,0.35)', transition:'transform 0.1s' }}
+                onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'}
+                onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
+                <Icon name="plus" size={18} color="white" />
+              </button>
+              {addMenu && (
+                <div style={{ position:'absolute', top:'calc(100% + 6px)', right:0, zIndex:80, background:T.surface, border:`1px solid ${T.borderStrong}`, borderRadius:12, boxShadow:'0 10px 32px rgba(0,0,0,0.14)', padding:6, minWidth:208 }}>
+                  {[
+                    { ic:'user',     label:'New contact',        sub:'Add one person',          fn:onAddPerson },
+                    { ic:'users',    label:'Add multiple',       sub:'Paste a list of names',   fn:onBulkAdd },
+                    { ic:'msg',      label:'Log group gathering',sub:'One log, many people',    fn:onLogGroup },
+                    { ic:'calendar', label:'Schedule event',     sub:'Plan something ahead',    fn:onAddEvent },
+                  ].map(item => (
+                    <button key={item.label} onClick={()=>{ setAddMenu(false); item.fn(); }}
+                      style={{ display:'flex', alignItems:'center', gap:10, width:'100%', padding:'9px 10px', background:'none', border:'none', borderRadius:8, cursor:'pointer', textAlign:'left' }}
+                      onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <span style={{ width:30, height:30, borderRadius:8, background:T.accentSoft, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                        <Icon name={item.ic} size={15} color={T.accent} />
+                      </span>
+                      <div>
+                        <p style={{ fontSize:13, fontWeight:600, color:T.text, lineHeight:1.25 }}>{item.label}</p>
+                        <p style={{ fontSize:11, color:T.faint, lineHeight:1.25 }}>{item.sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
         {/* Search bar */}
         <div style={{ position:'relative' }}>
           <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}>
-            <Icon name="search" size={14} color={isSearching?'#6366f1':'#9ca3af'} />
+            <Icon name="search" size={14} color={isSearching?'#F26B1D':'#9ca3af'} />
           </span>
           <input value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="Search names, places, topics…"
-            style={{ width:'100%', padding:'8px 30px 8px 32px', border:`1px solid ${isSearching?'#c7d2fe':'#f0f0f0'}`, borderRadius:8, fontSize:13, background: isSearching?'#f5f3ff':'#f9fafb', color:'#374151', transition:'all 0.15s' }} />
+            style={{ width:'100%', padding:'8px 30px 8px 32px', border:`1px solid ${isSearching?'#F6CBA3':'#EAEAE8'}`, borderRadius:8, fontSize:13, background: isSearching?'#FDF1E7':'#F7F6F3', color:'#374151', transition:'all 0.15s' }} />
           {isSearching && (
             <button onClick={()=>setSearch('')}
               style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#9ca3af', display:'flex', alignItems:'center', padding:2 }}
@@ -1669,7 +1872,7 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
 
       {/* Group filter chips */}
       {allGroups.length > 0 && (
-        <div style={{ padding:'8px 14px 10px', borderBottom:'1px solid #f9fafb', overflowX:'auto' }}>
+        <div style={{ padding:'8px 14px 10px', borderBottom:'1px solid #F7F6F3', overflowX:'auto' }}>
           <div style={{ display:'flex', gap:5, flexWrap:'nowrap' }}>
             <Chip active={!activeGroup} onClick={()=>setActiveGroup(null)}>All</Chip>
             {allGroups.map(g => (
@@ -1681,7 +1884,7 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
 
       {/* Stats + sort — only shown when not searching */}
       {!isSearching && (
-        <div style={{ padding:'4px 16px 8px', borderBottom:'1px solid #f9fafb', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div style={{ padding:'4px 16px 8px', borderBottom:'1px solid #F7F6F3', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <span style={{ fontSize:12, color:'#9ca3af' }}>{people.length} contact{people.length!==1?'s':''}</span>
           <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
             style={{ fontSize:12, color:'#6b7280', border:'none', background:'transparent', cursor:'pointer', outline:'none' }}>
@@ -1716,8 +1919,8 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
               return (
                 <div key={p.id} className="person-row"
                   onClick={() => onSelect(p.id)}
-                  style={{ padding:'9px 10px', borderRadius:10, cursor:'pointer', marginBottom:2, background: sel ? '#eef2ff' : 'transparent', display:'flex', alignItems:'center', gap:10 }}
-                  onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#f9fafb'; }}
+                  style={{ padding:'9px 10px', borderRadius:10, cursor:'pointer', marginBottom:2, background: sel ? '#FDF1E7' : 'transparent', display:'flex', alignItems:'center', gap:10 }}
+                  onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#F7F6F3'; }}
                   onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background='transparent'; }}>
                   <div style={{ position:'relative', flexShrink:0 }}>
                     <Avatar name={p.name} size={38} />
@@ -1743,11 +1946,11 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onQuickCapture, se
 
 /* ── Dashboard Sub-components ─────────────────────────────────────────────── */
 const StatCard = ({ icon, label, value, trend, accent }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
       <span style={{ fontSize:22 }}>{icon}</span>
       {trend !== undefined && trend !== 0 && (
-        <span style={{ fontSize:12, color: trend>0?'#10b981':'#9ca3af', fontWeight:700, background: trend>0?'#f0fdf4':'#f9fafb', padding:'2px 7px', borderRadius:99 }}>
+        <span style={{ fontSize:12, color: trend>0?'#10b981':'#9ca3af', fontWeight:700, background: trend>0?'#f0fdf4':'#F7F6F3', padding:'2px 7px', borderRadius:99 }}>
           {trend>0?'↑':''}{trend>0?`+${trend}`:`${trend}`} mo
         </span>
       )}
@@ -1765,7 +1968,7 @@ const BUCKETS = [
 ];
 
 const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
     <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>Time to catch up</h3>
     <p style={{ fontSize:12, color:'#9ca3af', marginBottom:16 }}>
       {catchupTotal > 0
@@ -1826,7 +2029,7 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
 );
 
 const UpcomingSection = ({ upcoming, onSelect }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
     <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:16 }}>Scheduled Events — next 30 days</h3>
 
     {upcoming.length === 0 ? (
@@ -1846,15 +2049,15 @@ const UpcomingSection = ({ upcoming, onSelect }) => (
           <div key={i}
             onClick={() => onSelect(c.person.id)}
             style={{ display:'flex', gap:12, padding:'10px 10px', borderRadius:8, cursor:'pointer',
-              background: i%2===0 ? '#fafafa' : 'white', marginBottom:4, transition:'background 0.1s' }}
-            onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
-            onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#fafafa':'white'}>
+              background: i%2===0 ? '#F7F6F3' : 'white', marginBottom:4, transition:'background 0.1s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#EDEDEC'}
+            onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#F7F6F3':'white'}>
             {/* Date block */}
             <div style={{ textAlign:'center', minWidth:38, flexShrink:0, paddingTop:2 }}>
-              <p style={{ fontSize:10, fontWeight:800, color:'#6366f1', textTransform:'uppercase', letterSpacing:'0.05em', lineHeight:1 }}>
+              <p style={{ fontSize:10, fontWeight:800, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.05em', lineHeight:1 }}>
                 {meetDate.toLocaleDateString('en-US',{month:'short'})}
               </p>
-              <p style={{ fontSize:22, fontWeight:900, color:'#4f46e5', lineHeight:1.1 }}>
+              <p style={{ fontSize:22, fontWeight:900, color:'#DC5A1A', lineHeight:1.1 }}>
                 {meetDate.getDate()}
               </p>
             </div>
@@ -1879,15 +2082,15 @@ const UpcomingSection = ({ upcoming, onSelect }) => (
 const RecentSection = ({ recent, onSelect }) => {
   if (!recent.length) return null;
   return (
-    <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+    <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
       <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:16 }}>Recent conversations</h3>
       {recent.map((c, i) => (
         <div key={i}
           onClick={() => onSelect(c.person.id)}
           style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'10px 8px',
-            borderTop: i>0 ? '1px solid #f9fafb' : 'none', cursor:'pointer', borderRadius:8, marginLeft:-8, marginRight:-8,
+            borderTop: i>0 ? '1px solid #F7F6F3' : 'none', cursor:'pointer', borderRadius:8, marginLeft:-8, marginRight:-8,
             transition:'background 0.1s' }}
-          onMouseEnter={e=>e.currentTarget.style.background='#f9fafb'}
+          onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
           onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
           <Avatar name={c.person.name} size={36} />
           <div style={{ flex:1, minWidth:0 }}>
@@ -1903,7 +2106,7 @@ const RecentSection = ({ recent, onSelect }) => {
             {c.topics?.length > 0 && (
               <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                 {c.topics.map(t => (
-                  <span key={t} style={{ padding:'1px 7px', background:'#f3f4f6', borderRadius:99, fontSize:11, color:'#6b7280' }}>{t}</span>
+                  <span key={t} style={{ padding:'1px 7px', background:'#EDEDEC', borderRadius:99, fontSize:11, color:'#6b7280' }}>{t}</span>
                 ))}
               </div>
             )}
@@ -1915,7 +2118,8 @@ const RecentSection = ({ recent, onSelect }) => {
 };
 
 /* ── Calendar Section ─────────────────────────────────────────────────────── */
-const CalendarSection = ({ people, onSelectPerson }) => {
+const EVT_COLOR = { event:T.accent, meeting:T.teal, birthday:T.rose };
+const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -1937,18 +2141,31 @@ const CalendarSection = ({ people, onSelectPerson }) => {
     if (viewMonth === 11) { setViewYear(y => y+1); setViewMonth(0); }
     else setViewMonth(m => m+1);
   };
+  const dateStr = (day) => `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
 
-  // Collect scheduled meetings + birthdays for the viewed month
+  // Collect scheduled events + meetings + birthdays for the viewed month.
+  // Group events (shared groupId) are de-duplicated so they show once.
   const monthEvents = useMemo(() => {
     const map = {};
     const add = (day, entry) => { if (!map[day]) map[day]=[]; map[day].push(entry); };
+    const seenGroups = new Set();
     people.forEach(p => {
-      // Scheduled meetings
+      // Standalone scheduled events
+      (p.events||[]).forEach(ev => {
+        if (!ev.date) return;
+        if (ev.groupId) { if (seenGroups.has(ev.groupId)) return; seenGroups.add(ev.groupId); }
+        const d = new Date(ev.date+'T12:00:00');
+        if (d.getFullYear()===viewYear && d.getMonth()===viewMonth) {
+          const who = ev.participants?.length ? ev.participants.join(', ') : p.name;
+          add(d.getDate(), { person:p, eventId:ev.id, label:[ev.time, ev.title||'Event'].filter(Boolean).join(' · '), sub:who, type:'event' });
+        }
+      });
+      // Scheduled meetings (from conversations)
       (p.conversations||[]).forEach(c => {
         if (!c.nextMeeting) return;
         const d = new Date(c.nextMeeting+'T12:00:00');
         if (d.getFullYear()===viewYear && d.getMonth()===viewMonth)
-          add(d.getDate(), { person:p, label:c.nextMeetingNote||'Catch-up', type:'meeting' });
+          add(d.getDate(), { person:p, label:c.nextMeetingNote||'Catch-up', sub:p.name, type:'meeting' });
       });
       // Birthdays (year-independent)
       if (p.birthday) {
@@ -1956,7 +2173,7 @@ const CalendarSection = ({ people, onSelectPerson }) => {
         const bMo = parseInt(bp.length === 3 ? bp[1] : bp[0], 10) - 1;
         const bDy = parseInt(bp.length === 3 ? bp[2] : bp[1], 10);
         if (bMo === viewMonth)
-          add(bDy, { person:p, label:`${p.name.split(' ')[0]}'s birthday 🎂`, type:'birthday' });
+          add(bDy, { person:p, label:`${p.name.split(' ')[0]}'s birthday 🎂`, sub:p.name, type:'birthday' });
       }
     });
     return map;
@@ -1972,23 +2189,31 @@ const CalendarSection = ({ people, onSelectPerson }) => {
   for (let d=1; d<=daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const navBtn = { background:'none', border:'1px solid #e5e7eb', borderRadius:6, width:26, height:26, cursor:'pointer', fontSize:14, color:'#6b7280', display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.1s' };
+  const navBtn = { background:'none', border:`1px solid ${T.borderStrong}`, borderRadius:6, width:26, height:26, cursor:'pointer', fontSize:14, color:T.textSoft, display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.1s' };
 
   return (
-    <div style={{ background:'white', borderRadius:12, padding:'16px 20px', border:'1px solid #f3f4f6', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
+    <div style={{ background:T.surface, borderRadius:12, padding:'16px 20px', border:`1px solid ${T.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
           <span style={{ fontSize:16 }}>📆</span>
-          <h3 style={{ fontSize:14, fontWeight:700, color:'#111827' }}>Calendar</h3>
+          <h3 style={{ fontSize:14, fontWeight:700, color:T.text }}>Calendar</h3>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+          {onAddEvent && (
+            <button onClick={()=>onAddEvent(null)} title="Schedule an event"
+              style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'5px 10px', background:T.accentSoft, color:T.accentDeep, border:`1px solid ${T.accentBorder}`, borderRadius:7, fontSize:12, fontWeight:600, cursor:'pointer' }}
+              onMouseEnter={e=>e.currentTarget.style.background=T.accentSoft2}
+              onMouseLeave={e=>e.currentTarget.style.background=T.accentSoft}>
+              <Icon name="plus" size={13} color={T.accent} />Event
+            </button>
+          )}
           <button style={navBtn} onClick={prevMonth}
-            onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
+            onMouseEnter={e=>e.currentTarget.style.background=T.bg}
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>‹</button>
           <span style={{ fontSize:13, fontWeight:600, color:'#374151', minWidth:130, textAlign:'center' }}>{monthLabel}</span>
           <button style={navBtn} onClick={nextMonth}
-            onMouseEnter={e=>e.currentTarget.style.background='#f3f4f6'}
+            onMouseEnter={e=>e.currentTarget.style.background=T.bg}
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>›</button>
         </div>
       </div>
@@ -2006,16 +2231,16 @@ const CalendarSection = ({ people, onSelectPerson }) => {
           if (!day) return <div key={i} style={{ height:36 }} />;
           const isToday = isCurrentMonth && day===today.getDate();
           const evts = monthEvents[day]||[];
-          const hasMtg = evts.some(e=>e.type==='meeting');
-          const hasBday = evts.some(e=>e.type==='birthday');
+          const types = [...new Set(evts.map(e=>e.type))];
           const hasEvt = evts.length > 0;
           const isMulti = evts.length > 1;
           const isPopOpen = popoverDay === day;
 
+          const goTo = (ev) => onSelectPerson(ev.person.id);
           const handleDayClick = (e) => {
             e.stopPropagation();
-            if (!hasEvt) return;
-            if (evts.length === 1) { onSelectPerson(evts[0].person.id); return; }
+            if (!hasEvt) { if (onAddEvent) onAddEvent(dateStr(day)); return; }
+            if (evts.length === 1) { goTo(evts[0]); return; }
             setPopoverDay(isPopOpen ? null : day);
           };
 
@@ -2023,21 +2248,22 @@ const CalendarSection = ({ people, onSelectPerson }) => {
             <div key={i} style={{ position:'relative' }}>
               <div
                 onClick={handleDayClick}
-                title={!isMulti && evts.length===1 ? evts[0].label : undefined}
+                title={!isMulti && evts.length===1 ? evts[0].label : (!hasEvt && onAddEvent ? 'Click to schedule' : undefined)}
                 style={{
                   height:36, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
-                  borderRadius:7, cursor:hasEvt?'pointer':'default',
-                  background: isToday?'#4f46e5' : isPopOpen?'#eef2ff' : hasEvt?'#f5f3ff':'transparent',
-                  border: isPopOpen&&!isToday ? '1px solid #a5b4fc' : '1px solid transparent',
+                  borderRadius:7, cursor:(hasEvt||onAddEvent)?'pointer':'default',
+                  background: isToday?T.accent : isPopOpen?T.accentSoft : hasEvt?T.accentSoft:'transparent',
+                  border: isPopOpen&&!isToday ? `1px solid ${T.accentBorder}` : '1px solid transparent',
                   transition:'background 0.1s',
                 }}
-                onMouseEnter={e=>{ if(hasEvt&&!isToday) e.currentTarget.style.background='#eef2ff'; }}
-                onMouseLeave={e=>{ if(hasEvt&&!isToday&&!isPopOpen) e.currentTarget.style.background='#f5f3ff'; if(!hasEvt) e.currentTarget.style.background='transparent'; }}>
-                <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday?700:400, color:isToday?'white':hasEvt?'#3730a3':'#374151' }}>{day}</span>
-                {(hasMtg||hasBday) && (
+                onMouseEnter={e=>{ if(!isToday) e.currentTarget.style.background = hasEvt?T.accentSoft2:T.bg; }}
+                onMouseLeave={e=>{ if(!isToday&&!isPopOpen) e.currentTarget.style.background = hasEvt?T.accentSoft:'transparent'; }}>
+                <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday?700:400, color:isToday?'white':hasEvt?T.accentDeep:'#374151' }}>{day}</span>
+                {types.length > 0 && (
                   <div style={{ display:'flex', gap:2, marginTop:2 }}>
-                    {hasMtg && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#6366f1', flexShrink:0 }} />}
-                    {hasBday && <span style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.8)':'#f97316', flexShrink:0 }} />}
+                    {types.slice(0,3).map(t => (
+                      <span key={t} style={{ width:4, height:4, borderRadius:'50%', background:isToday?'rgba(255,255,255,0.85)':EVT_COLOR[t], flexShrink:0 }} />
+                    ))}
                   </div>
                 )}
               </div>
@@ -2046,25 +2272,34 @@ const CalendarSection = ({ people, onSelectPerson }) => {
               {isPopOpen && (
                 <div onClick={e=>e.stopPropagation()}
                   style={{ position:'absolute', top:'calc(100% + 4px)', left:'50%', transform:'translateX(-50%)',
-                    zIndex:200, background:'white', borderRadius:10, boxShadow:'0 6px 24px rgba(0,0,0,0.14)',
-                    border:'1px solid #e5e7eb', minWidth:180, padding:'4px 0', whiteSpace:'nowrap' }}>
+                    zIndex:200, background:T.surface, borderRadius:10, boxShadow:'0 6px 24px rgba(0,0,0,0.14)',
+                    border:`1px solid ${T.borderStrong}`, minWidth:200, padding:'4px 0', whiteSpace:'nowrap' }}>
                   {/* Arrow */}
                   <div style={{ position:'absolute', top:-5, left:'50%', transform:'translateX(-50%) rotate(45deg)',
-                    width:9, height:9, background:'white', border:'1px solid #e5e7eb', borderBottom:'none', borderRight:'none' }} />
+                    width:9, height:9, background:T.surface, border:`1px solid ${T.borderStrong}`, borderBottom:'none', borderRight:'none' }} />
                   {evts.map((ev, ei) => (
                     <button key={ei}
-                      onClick={() => { onSelectPerson(ev.person.id); setPopoverDay(null); }}
+                      onClick={() => { goTo(ev); setPopoverDay(null); }}
                       style={{ display:'flex', alignItems:'center', gap:9, width:'100%', padding:'9px 14px',
                         background:'none', border:'none', cursor:'pointer', textAlign:'left', transition:'background 0.1s' }}
-                      onMouseEnter={e=>e.currentTarget.style.background='#f9fafb'}
+                      onMouseEnter={e=>e.currentTarget.style.background=T.bg}
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                      <span style={{ fontSize:14, flexShrink:0 }}>{ev.type==='birthday'?'🎂':'📅'}</span>
+                      <span style={{ width:7, height:7, borderRadius:'50%', background:EVT_COLOR[ev.type], flexShrink:0 }} />
                       <div>
-                        <p style={{ fontSize:12, fontWeight:600, color:'#111827', lineHeight:1.3 }}>{ev.person.name}</p>
+                        <p style={{ fontSize:12, fontWeight:600, color:'#111827', lineHeight:1.3 }}>{ev.sub}</p>
                         <p style={{ fontSize:11, color:'#9ca3af', lineHeight:1.3 }}>{ev.label}</p>
                       </div>
                     </button>
                   ))}
+                  {onAddEvent && (
+                    <button onClick={()=>{ setPopoverDay(null); onAddEvent(dateStr(day)); }}
+                      style={{ display:'flex', alignItems:'center', gap:8, width:'100%', padding:'9px 14px', borderTop:`1px solid ${T.border}`,
+                        background:'none', border:'none', cursor:'pointer', textAlign:'left', color:T.accentDeep, fontWeight:600, fontSize:12 }}
+                      onMouseEnter={e=>e.currentTarget.style.background=T.bg}
+                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                      <Icon name="plus" size={13} color={T.accent} />Add event this day
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -2073,15 +2308,13 @@ const CalendarSection = ({ people, onSelectPerson }) => {
       </div>
 
       {/* Legend */}
-      <div style={{ display:'flex', gap:14, marginTop:12, paddingTop:10, borderTop:'1px solid #f9fafb', justifyContent:'flex-end' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:'#6366f1', flexShrink:0 }} />
-          <span style={{ fontSize:10, color:'#9ca3af' }}>Scheduled meeting</span>
-        </div>
-        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-          <span style={{ width:7, height:7, borderRadius:'50%', background:'#f97316', flexShrink:0 }} />
-          <span style={{ fontSize:10, color:'#9ca3af' }}>Birthday</span>
-        </div>
+      <div style={{ display:'flex', gap:14, marginTop:12, paddingTop:10, borderTop:`1px solid ${T.border}`, justifyContent:'flex-end' }}>
+        {[['event','Event'],['meeting','Meeting'],['birthday','Birthday']].map(([t,l]) => (
+          <div key={t} style={{ display:'flex', alignItems:'center', gap:5 }}>
+            <span style={{ width:7, height:7, borderRadius:'50%', background:EVT_COLOR[t], flexShrink:0 }} />
+            <span style={{ fontSize:10, color:'#9ca3af' }}>{l}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -2129,7 +2362,7 @@ const BirthdaySection = ({ people, onSelect }) => {
 };
 
 /* ── Dashboard ────────────────────────────────────────────────────────────── */
-const Dashboard = ({ people, onSelectPerson, onAddPerson, onForgo }) => {
+const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onForgo }) => {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
@@ -2151,17 +2384,21 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onForgo }) => {
   // Upcoming (next 30 days), sorted soonest first
   const today0 = new Date(new Date().setHours(0,0,0,0));
   const in30 = new Date(today0.getTime() + 30 * 86400000);
-  const upcoming = useMemo(() =>
-    allConvs
-      .filter(c => {
-        if (!c.nextMeeting) return false;
-        const d = new Date(c.nextMeeting+'T12:00:00');
-        return d >= today0 && d <= in30;
-      })
-      .sort((a,b) => a.nextMeeting.localeCompare(b.nextMeeting))
-      .slice(0, 8),
-    [allConvs]
-  );
+  const upcoming = useMemo(() => {
+    const inRange = (ds) => { const d = new Date(ds+'T12:00:00'); return d >= today0 && d <= in30; };
+    const items = [];
+    // Meetings scheduled from conversations
+    allConvs.forEach(c => { if (c.nextMeeting && inRange(c.nextMeeting)) items.push({ key:'m'+c.id, person:c.person, nextMeeting:c.nextMeeting, nextMeetingNote:c.nextMeetingNote }); });
+    // Standalone scheduled events (de-dupe group copies by groupId)
+    const seen = new Set();
+    people.forEach(p => (p.events||[]).forEach(ev => {
+      if (!ev.date || !inRange(ev.date)) return;
+      if (ev.groupId) { if (seen.has(ev.groupId)) return; seen.add(ev.groupId); }
+      const note = ev.participants?.length>1 ? `${ev.title||'Event'} (group of ${ev.participants.length})` : (ev.title||'Event');
+      items.push({ key:'e'+ev.id, person:p, nextMeeting:ev.date, nextMeetingNote:[ev.time, note].filter(Boolean).join(' · ') });
+    }));
+    return items.sort((a,b) => a.nextMeeting.localeCompare(b.nextMeeting)).slice(0, 8);
+  }, [allConvs, people]);
 
   // Catch-up buckets — skip contacts with follow-up off or auto-dropped after 15 months (450d)
   const FORGO_DAYS = 450;
@@ -2186,17 +2423,38 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onForgo }) => {
     <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:40 }}>
       <div style={{ fontSize:52, marginBottom:16 }}>👥</div>
       <h2 style={{ fontSize:20, fontWeight:700, color:'#374151', marginBottom:8 }}>Start building your network memory</h2>
-      <p style={{ fontSize:14, color:'#9ca3af', marginBottom:20 }}>Add your first contact to get started.</p>
-      <Btn onClick={onAddPerson}>Add first contact</Btn>
+      <p style={{ fontSize:14, color:'#9ca3af', marginBottom:20 }}>Add your first contact — or paste a whole list.</p>
+      <div style={{ display:'flex', gap:8 }}>
+        <Btn onClick={onAddPerson}>Add first contact</Btn>
+        <Btn variant="secondary" onClick={onBulkAdd}><Icon name="users" size={14} color={T.textSoft} />Add multiple</Btn>
+      </div>
     </div>
+  );
+
+  const headerBtn = (label, ic, fn, primary) => (
+    <button onClick={fn}
+      style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer',
+        background: primary ? T.accent : T.surface, color: primary ? 'white' : '#374151',
+        border: primary ? 'none' : `1px solid ${T.borderStrong}`, transition:'filter 0.1s' }}
+      onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.97)'}
+      onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
+      <Icon name={ic} size={14} color={primary ? 'white' : T.textSoft} />{label}
+    </button>
   );
 
   return (
     <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
       {/* Header */}
-      <div style={{ padding:'16px 28px', background:'white', borderBottom:'1px solid #f3f4f6', display:'flex', alignItems:'baseline', gap:12 }}>
-        <h1 style={{ fontSize:20, fontWeight:800, color:'#111827' }}>Your Network</h1>
-        <span style={{ fontSize:13, color:'#9ca3af' }}>{greeting} — here's where things stand</span>
+      <div style={{ padding:'16px 28px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ flex:1, display:'flex', alignItems:'baseline', gap:12 }}>
+          <h1 style={{ fontSize:20, fontWeight:800, color:'#111827' }}>Your Network</h1>
+          <span style={{ fontSize:13, color:'#9ca3af' }}>{greeting} — here's where things stand</span>
+        </div>
+        <div style={{ display:'flex', gap:8 }}>
+          {headerBtn('Event', 'calendar', () => onAddEvent(null))}
+          {headerBtn('Group log', 'msg', onLogGroup)}
+          {headerBtn('Add contact', 'plus', onAddPerson, true)}
+        </div>
       </div>
 
       <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
@@ -2208,11 +2466,11 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onForgo }) => {
           <StatCard icon="🔔" label="Overdue follow-ups" value={overdueCount}
             accent={overdueCount > 0 ? '#ef4444' : undefined} />
           <StatCard icon="📅" label="Upcoming meetings" value={upcoming.length}
-            accent={upcoming.length > 0 ? '#4f46e5' : undefined} />
+            accent={upcoming.length > 0 ? '#DC5A1A' : undefined} />
         </div>
 
         {/* Calendar */}
-        <CalendarSection people={people} onSelectPerson={onSelectPerson} />
+        <CalendarSection people={people} onSelectPerson={onSelectPerson} onAddEvent={onAddEvent} />
 
         {/* Birthday reminders */}
         <BirthdaySection people={people} onSelect={onSelectPerson} />
@@ -2233,7 +2491,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onForgo }) => {
 /* ── App ──────────────────────────────────────────────────────────────────── */
 /* ── Loading / Error screens ──────────────────────────────────────────────── */
 const LoadingScreen = () => (
-  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, background:'#f9fafb' }}>
+  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, background:'#F7F6F3' }}>
     <div style={{ fontSize:36, animation:'spin 1.2s linear infinite', display:'inline-block' }}>⏳</div>
     <p style={{ fontSize:15, fontWeight:700, color:'#374151' }}>Loading your network…</p>
     <p style={{ fontSize:12, color:'#9ca3af' }}>Connecting to cloud storage</p>
@@ -2242,13 +2500,174 @@ const LoadingScreen = () => (
 );
 
 const ErrorScreen = ({ error, onRetry }) => (
-  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:12, background:'#f9fafb', padding:32 }}>
+  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:12, background:'#F7F6F3', padding:32 }}>
     <div style={{ fontSize:40 }}>⚠️</div>
     <p style={{ fontSize:16, fontWeight:700, color:'#374151' }}>Couldn't connect to cloud storage</p>
     <p style={{ fontSize:13, color:'#6b7280', maxWidth:360, textAlign:'center', lineHeight:'1.55' }}>{error}</p>
-    <button onClick={onRetry} style={{ marginTop:8, padding:'9px 20px', background:'#6366f1', color:'white', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer' }}>Retry</button>
+    <button onClick={onRetry} style={{ marginTop:8, padding:'9px 20px', background:'#F26B1D', color:'white', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer' }}>Retry</button>
   </div>
 );
+
+/* ── Bulk Add Contacts Modal ──────────────────────────────────────────────── */
+const parseBulkLine = (line) => {
+  // "Name, Company"  |  "Name - Company"  |  "Name (Company)"  |  "Name"
+  let name = line.trim(), company = '';
+  const paren = name.match(/^(.*?)\s*\(([^)]+)\)\s*$/);
+  if (paren) { name = paren[1].trim(); company = paren[2].trim(); }
+  else {
+    const sep = name.match(/^(.*?)\s*(?:,|\s-\s|\||—)\s*(.+)$/);
+    if (sep) { name = sep[1].trim(); company = sep[2].trim(); }
+  }
+  return { name, company };
+};
+
+const BulkPersonModal = ({ onSave, onClose }) => {
+  const [text, setText] = useState('');
+  const [group, setGroup] = useState('');
+  const [followUpEnabled, setFollowUpEnabled] = useState(true);
+  const [followUpDays, setFollowUpDays] = useState(60);
+
+  const parsed = useMemo(() =>
+    text.split('\n').map(l=>l.trim()).filter(Boolean).map(parseBulkLine).filter(p=>p.name),
+    [text]);
+
+  const handleSave = () => {
+    if (!parsed.length) return;
+    const today = new Date().toISOString().slice(0,10);
+    const groups = group.trim() ? group.split(',').map(g=>g.trim()).filter(Boolean) : [];
+    const persons = parsed.map(({ name, company }) => ({
+      id:uid(), name, role:'', company, howMet:'', hometown:'', so:'', kids:[],
+      birthday:'', hobbies:[], groups:[...groups], additionalInfo:'',
+      followUpEnabled, followUpDays, createdAt:today, conversations:[], events:[],
+    }));
+    onSave(persons);
+  };
+
+  return (
+    <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box" style={{ background:T.surface, borderRadius:16, width:'100%', maxWidth:560, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <h2 style={{ fontSize:18, fontWeight:700, color:T.text }}>Add multiple contacts</h2>
+            <p style={{ marginTop:2, fontSize:13, color:T.faint }}>One person per line — you can refine details later</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:T.faint, padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+        </div>
+
+        <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
+          <div>
+            <Label>Names</Label>
+            <p style={{ fontSize:12, color:T.faint, marginBottom:6 }}>One per line. Optionally add a company: <span style={{ color:T.textSoft }}>Jane Doe, Stripe</span></p>
+            <textarea value={text} onChange={e=>setText(e.target.value)} rows={8} autoFocus
+              placeholder={"Jane Doe, Stripe\nMarcus Lee (Acme)\nPriya Patel\n…"}
+              style={{ width:'100%', padding:'10px 12px', border:`1px solid ${T.borderStrong}`, borderRadius:8, fontSize:14, lineHeight:'1.6', resize:'vertical', color:T.text, background:T.surface, fontFamily:'inherit', boxSizing:'border-box', outline:'none' }} />
+          </div>
+
+          <div>
+            <Label>Add everyone to group(s) <span style={{ textTransform:'none', fontWeight:400, color:T.faint }}>— optional</span></Label>
+            <Input value={group} onChange={e=>setGroup(e.target.value)} placeholder="e.g. SaaStr 2026, Book club" />
+          </div>
+
+          <div style={{ padding:'14px 16px', background:T.bg, borderRadius:10, border:`1px solid ${T.border}` }}>
+            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: followUpEnabled ? 12 : 0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <Icon name="bell" size={15} color={T.textSoft} />
+                <span style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Follow-up reminder for all</span>
+              </div>
+              <Toggle on={followUpEnabled} onChange={setFollowUpEnabled} />
+            </div>
+            {followUpEnabled && (
+              <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:14, color:T.textSoft }}>
+                <span>Remind me if I haven't talked in</span>
+                <input type="number" value={followUpDays} min={1}
+                  onChange={e=>setFollowUpDays(parseInt(e.target.value)||30)}
+                  style={{ width:56, padding:'4px 8px', border:`1px solid ${T.borderStrong}`, borderRadius:6, fontSize:14, textAlign:'center' }} />
+                <span>days</span>
+              </div>
+            )}
+          </div>
+
+          {parsed.length > 0 && (
+            <div>
+              <Label>Preview — {parsed.length} contact{parsed.length!==1?'s':''}</Label>
+              <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:4 }}>
+                {parsed.slice(0,40).map((p,i) => (
+                  <span key={i} style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'4px 10px 4px 4px', background:T.bg, border:`1px solid ${T.border}`, borderRadius:99, fontSize:13, color:T.text }}>
+                    <Avatar name={p.name} size={20} />
+                    {p.name}{p.company && <span style={{ color:T.faint }}>· {p.company}</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding:'14px 24px', borderTop:`1px solid ${T.border}`, display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={handleSave} style={{ opacity: parsed.length ? 1 : 0.5, cursor: parsed.length ? 'pointer' : 'default' }}>
+            Add {parsed.length || ''} contact{parsed.length!==1?'s':''}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Scheduled Event Modal (no conversation required) ─────────────────────── */
+const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], lockedId=null, onSave, onClose }) => {
+  const blank = { id:uid(), date: defaultDate || new Date().toISOString().slice(0,10), time:'', title:'', location:'' };
+  const [f, setF] = useState(event || blank);
+  const set = (k,v) => setF(prev=>({...prev,[k]:v}));
+  const [participantIds, setParticipantIds] = useState(event?._participantIds || defaultParticipantIds);
+  const isEdit = !!event?.id;
+  const canSave = f.date && participantIds.length > 0;
+
+  return (
+    <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box" style={{ background:T.surface, borderRadius:16, width:'100%', maxWidth:520, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <h2 style={{ fontSize:18, fontWeight:700, color:T.text }}>{isEdit ? 'Edit event' : 'Schedule an event'}</h2>
+            <p style={{ marginTop:2, fontSize:13, color:T.faint }}>Plan ahead — no past conversation needed</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:T.faint, padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+        </div>
+
+        <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
+          <div>
+            <Label>What's the event?</Label>
+            <Input value={f.title} onChange={e=>set('title',e.target.value)} placeholder="e.g. Coffee catch-up, Dinner, Conference" autoFocus />
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:12 }}>
+            <div>
+              <Label>Date</Label>
+              <Input type="date" value={f.date} onChange={e=>set('date',e.target.value)} />
+            </div>
+            <div>
+              <Label>Time <span style={{ textTransform:'none', fontWeight:400, color:T.faint }}>— optional</span></Label>
+              <Input type="time" value={f.time||''} onChange={e=>set('time',e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <Label>Location / medium <span style={{ textTransform:'none', fontWeight:400, color:T.faint }}>— optional</span></Label>
+            <Input value={f.location||''} onChange={e=>set('location',e.target.value)} placeholder="e.g. Blue Bottle, Zoom" />
+          </div>
+          <div>
+            <Label>With whom?</Label>
+            <ContactMultiSelect people={people} selectedIds={participantIds} onChange={setParticipantIds} lockedId={lockedId} placeholder="Search contacts…" />
+          </div>
+        </div>
+
+        <div style={{ padding:'14px 24px', borderTop:`1px solid ${T.border}`, display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={() => canSave && onSave(f, participantIds)} style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}>
+            {isEdit ? 'Save event' : participantIds.length>1 ? `Add event for ${participantIds.length}` : 'Add to calendar'}
+          </Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 /* ── App ──────────────────────────────────────────────────────────────────── */
 const App = () => {
@@ -2260,7 +2679,12 @@ const App = () => {
   const [editingPerson, setEditingPerson] = useState(null);
   const [showConvModal, setShowConvModal] = useState(false);
   const [editingConv, setEditingConv] = useState(null);
+  const [convGroupMode, setConvGroupMode] = useState(false); // true → open conv log with no preselected person
   const [showQuickCapture, setShowQuickCapture] = useState(false);
+  const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showEventModal, setShowEventModal] = useState(false);
+  const [editingEvent, setEditingEvent] = useState(null); // { event, lockedId }
+  const [eventDefaults, setEventDefaults] = useState({ date:null, participantIds:[], lockedId:null });
   const [search, setSearch] = useState('');
   const [sortBy, setSortBy] = useState('recent');
   const saveTimer  = useRef(null);
@@ -2378,14 +2802,72 @@ const App = () => {
     setSelectedId(null);
   };
 
-  const saveConv = (conv) => {
-    setPeople(prev => prev.map(p => {
-      if (p.id !== selectedId) return p;
-      const exists = p.conversations.find(c=>c.id===conv.id);
-      const convs = exists ? p.conversations.map(c=>c.id===conv.id?conv:c) : [...p.conversations, conv];
-      return { ...p, conversations: convs };
-    }));
-    setShowConvModal(false); setEditingConv(null);
+  const saveConv = (conv, participantIds) => {
+    if (editingConv) {
+      // Editing → update in place for the currently selected person only
+      setPeople(prev => prev.map(p => {
+        if (p.id !== selectedId) return p;
+        const convs = (p.conversations||[]).map(c=>c.id===conv.id?conv:c);
+        return { ...p, conversations: convs };
+      }));
+    } else {
+      // New log → distribute to every selected participant (group gathering when >1)
+      const ids = participantIds && participantIds.length ? participantIds
+                : (selectedId ? [selectedId] : []);
+      setPeople(prev => {
+        const isGroup = ids.length > 1;
+        const groupId = isGroup ? uid() : null;
+        const names = ids.map(id => prev.find(p=>p.id===id)?.name).filter(Boolean);
+        return prev.map(p => ids.includes(p.id)
+          ? { ...p, conversations: [...(p.conversations||[]), {
+              ...conv, id: uid(),
+              ...(isGroup ? { groupId, participants: names } : {}),
+            }] }
+          : p);
+      });
+      if (ids.length === 1) setSelectedId(ids[0]);
+    }
+    setShowConvModal(false); setEditingConv(null); setConvGroupMode(false);
+  };
+
+  // Create several contacts at once
+  const saveBulkPersons = (persons) => {
+    setPeople(prev => [...prev, ...persons]);
+    setShowBulkModal(false);
+  };
+
+  // Scheduled events (no conversation required) — stored per contact in p.events
+  const saveEvent = (event, participantIds) => {
+    const ids = participantIds || [];
+    setPeople(prev => {
+      const isGroup = ids.length > 1;
+      const groupId = isGroup ? uid() : (event.groupId || null);
+      const names = ids.map(id => prev.find(p=>p.id===id)?.name).filter(Boolean);
+      // If editing, drop the old copies of this event id everywhere, then re-add
+      const stripped = editingEvent
+        ? prev.map(p => ({ ...p, events: (p.events||[]).filter(e=>e.id!==event.id && (!event.groupId || e.groupId!==event.groupId)) }))
+        : prev;
+      return stripped.map(p => ids.includes(p.id)
+        ? { ...p, events: [...(p.events||[]), {
+            id: event.id, date: event.date, time: event.time||'', title: event.title||'',
+            location: event.location||'', groupId, ...(isGroup ? { participants: names } : {}),
+          }] }
+        : p);
+    });
+    setShowEventModal(false); setEditingEvent(null);
+  };
+
+  const deleteEvent = (personId, eventId) => {
+    if (!confirm('Delete this scheduled event?')) return;
+    setPeople(prev => prev.map(p =>
+      p.id === personId ? { ...p, events: (p.events||[]).filter(e=>e.id!==eventId) } : p
+    ));
+  };
+
+  const openAddEvent = ({ date=null, lockedId=null }={}) => {
+    setEditingEvent(null);
+    setEventDefaults({ date, participantIds: lockedId ? [lockedId] : [], lockedId });
+    setShowEventModal(true);
   };
 
   // Save a conversation to any person by ID (used by Quick Capture)
@@ -2429,6 +2911,9 @@ const App = () => {
         people={people} selectedId={selectedId}
         onSelect={setSelectedId}
         onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
+        onBulkAdd={() => setShowBulkModal(true)}
+        onLogGroup={() => { setEditingConv(null); setConvGroupMode(true); setSelectedId(null); setShowConvModal(true); }}
+        onAddEvent={() => openAddEvent()}
         onQuickCapture={() => setShowQuickCapture(true)}
         search={search} setSearch={setSearch}
         sortBy={sortBy} setSortBy={setSortBy}
@@ -2441,15 +2926,21 @@ const App = () => {
           onBack={() => setSelectedId(null)}
           onEditPerson={p => { setEditingPerson(p); setShowPersonModal(true); }}
           onDeletePerson={deletePerson}
-          onAddConv={() => { setEditingConv(null); setShowConvModal(true); }}
+          onAddConv={() => { setEditingConv(null); setConvGroupMode(false); setShowConvModal(true); }}
           onEditConv={c => { setEditingConv(c); setShowConvModal(true); }}
           onDeleteConv={deleteConv}
+          onSchedule={() => openAddEvent({ lockedId: selected.id })}
+          onEditEvent={ev => { setEditingEvent({ event:{...ev, _participantIds: ev.groupId ? people.filter(p=>(p.events||[]).some(e=>e.groupId===ev.groupId)).map(p=>p.id) : [selected.id] }, lockedId:null }); setEventDefaults({ date:ev.date, participantIds:[], lockedId:null }); setShowEventModal(true); }}
+          onDeleteEvent={deleteEvent}
         />
       ) : (
         <Dashboard
           people={people}
           onSelectPerson={setSelectedId}
           onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
+          onBulkAdd={() => setShowBulkModal(true)}
+          onLogGroup={() => { setEditingConv(null); setConvGroupMode(true); setSelectedId(null); setShowConvModal(true); }}
+          onAddEvent={(date) => openAddEvent({ date })}
           onForgo={forgoPerson}
         />
       )}
@@ -2458,7 +2949,29 @@ const App = () => {
         <PersonModal person={editingPerson} onSave={savePerson} onClose={() => { setShowPersonModal(false); setEditingPerson(null); }} />
       )}
       {showConvModal && (
-        <ConvModal conv={editingConv} personName={selected?.name} onSave={saveConv} onClose={() => { setShowConvModal(false); setEditingConv(null); }} />
+        <ConvModal
+          conv={editingConv}
+          personName={selected?.name}
+          people={people}
+          initialParticipantIds={editingConv ? [] : (convGroupMode ? [] : (selectedId ? [selectedId] : []))}
+          lockedId={editingConv ? null : (convGroupMode ? null : selectedId)}
+          onSave={saveConv}
+          onClose={() => { setShowConvModal(false); setEditingConv(null); setConvGroupMode(false); }}
+        />
+      )}
+      {showBulkModal && (
+        <BulkPersonModal onSave={saveBulkPersons} onClose={() => setShowBulkModal(false)} />
+      )}
+      {showEventModal && (
+        <EventModal
+          event={editingEvent?.event || null}
+          people={people}
+          defaultDate={eventDefaults.date}
+          defaultParticipantIds={eventDefaults.participantIds}
+          lockedId={eventDefaults.lockedId}
+          onSave={saveEvent}
+          onClose={() => { setShowEventModal(false); setEditingEvent(null); }}
+        />
       )}
       {showQuickCapture && (
         <QuickCapture
