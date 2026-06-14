@@ -459,17 +459,25 @@ const KidsInput = ({ kids=[], onChange }) => {
 };
 
 /* ── BulletListInput ──────────────────────────────────────────────────────── */
+const autoGrow = (el) => { if (el) { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; } };
 const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...' }) => {
   const [val, setVal] = useState('');
   const add = () => { const t = val.trim(); if (t) { onChange([...items, t]); setVal(''); } };
+  const editAt = (i, text) => onChange(items.map((it,j)=>j===i?text:it));
   return (
     <div style={{ border:'1px solid #E3E2DF', borderRadius:8, overflow:'hidden' }}>
       {items.map((item, i) => (
         <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', background:'white', borderBottom:'1px solid #EDEDEC' }}>
-          <span style={{ color:'#9ca3af', marginTop:3, flexShrink:0, fontSize:12 }}>•</span>
-          <span style={{ flex:1, fontSize:14, color:'#374151', lineHeight:'1.45' }}>{item}</span>
-          <button onClick={() => onChange(items.filter((_,j)=>j!==i))}
-            style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:0, flexShrink:0, marginTop:2 }}
+          <span style={{ color:'#9ca3af', marginTop:8, flexShrink:0, fontSize:12 }}>•</span>
+          <textarea
+            value={item} rows={1}
+            ref={autoGrow}
+            onChange={e=>{ autoGrow(e.target); editAt(i, e.target.value); }}
+            onBlur={e=>{ if(!e.target.value.trim()) onChange(items.filter((_,j)=>j!==i)); }}
+            onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); e.target.blur(); } }}
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'#374151', lineHeight:'1.45', resize:'none', fontFamily:'inherit', padding:'2px 0', overflow:'hidden', minWidth:0 }} />
+          <button onClick={() => onChange(items.filter((_,j)=>j!==i))} title="Remove"
+            style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:0, flexShrink:0, marginTop:6 }}
             onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
             onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
             <Icon name="x" size={13} color="currentColor" />
@@ -480,6 +488,7 @@ const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...'
         <span style={{ color:'#d1d5db', fontSize:16, flexShrink:0 }}>+</span>
         <input value={val} onChange={e=>setVal(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){e.preventDefault();add();} }}
+          onBlur={add}
           placeholder={placeholder}
           style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'#6b7280' }} />
       </div>
@@ -2660,6 +2669,23 @@ const BirthdaySection = ({ people, onSelect }) => {
   );
 };
 
+/* Is a follow-up something *I* committed to doing (vs. the other person's task or
+   a note)? Only first-person commitments belong on my dashboard. We exclude
+   "receiving" phrasings ("they'll send me…", "follow up with me") and require a
+   first-person / self-task marker ("I will", "I need to", "going to", an
+   imperative action verb, "remind me to", etc.). */
+const RECEIVE_RX = /\b(sends? me|will send me|gets? back to me|follow(?:s|ing)? up with me|reach(?:es|ing)? out to me|loops? me in|lets? me know|will let me know|emails? me|calls? me|texts? me|will get me)\b/i;
+const FIRST_PERSON_RX = /(^|\b)(i['’]?\s?ll|i\s+will|i\s+need\s+to|i\s+have\s+to|i\s+had\s+to|i['’]?m\s+going\s+to|i\s+am\s+going\s+to|i\s+should|i\s+must|i\s+want\s+to|i\s+plan\s+to|i\s+intend\s+to|i['’]?ve\s+got\s+to|i\s+gotta|i\s+owe|going\s+to|gonna|let\s+me|remind\s+me\s+to|my\s+(?:job|turn|task|responsibility)\s+to|need\s+to)\b/i;
+const TASK_VERB_RX = /^(send|email|e-mail|call|text|message|reach\s+out|follow\s+up|schedule|book|set\s+up|draft|write|finish|complete|prepare|review|share|forward|introduce|connect|invite|order|buy|pay|sign|submit|check|confirm|plan|create|build|make|research|read|look\s+into|put\s+together|circle\s+back)\b/i;
+const isMyCommitment = (t) => {
+  const s = (t || '').toLowerCase().trim();
+  if (!s) return false;
+  if (RECEIVE_RX.test(s)) return false;          // someone else acts toward me
+  if (FIRST_PERSON_RX.test(s)) return true;      // explicit first-person commitment
+  if (TASK_VERB_RX.test(s)) return true;         // imperative self-task ("Send Aaron the deck")
+  return false;
+};
+
 /* ── Commitments ("homework") — open follow-ups across all conversations ───── */
 const CommitmentsSection = ({ people, onSelect, onToggle }) => {
   const [showDone, setShowDone] = useState(false);
@@ -2668,6 +2694,7 @@ const CommitmentsSection = ({ people, onSelect, onToggle }) => {
     people.forEach(p => (p.conversations||[]).forEach(c => {
       const doneSet = new Set(c.doneFollowUps||[]);
       (c.followUps||[]).forEach(text => {
+        if (!isMyCommitment(text)) return;       // only things *I* said I'd do
         const item = { person:p, convId:c.id, date:c.date, text };
         (doneSet.has(text) ? done : open).push(item);
       });
