@@ -2,7 +2,14 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#F26B1D">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Resume">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='22' fill='%23F26B1D'/%3E%3Ctext x='50' y='68' font-size='58' text-anchor='middle' fill='white' font-family='sans-serif' font-weight='bold'%3E%E2%96%B6%3C/text%3E%3C/svg%3E">
   <title>Resume — Remember What Matters</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.development.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.development.js"></script>
@@ -37,6 +44,27 @@
     .person-row { transition: background 0.1s; }
     button { font-family: inherit; }
     @keyframes micPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); } 50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); } }
+
+    /* ── Mobile / iPhone responsiveness ─────────────────────────────────────── */
+    html, body, #root { height: 100%; }
+    /* Honour the notch / home-indicator safe areas */
+    .safe-top { padding-top: env(safe-area-inset-top); }
+    .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+    @media (max-width: 820px) {
+      /* Prevent iOS zoom-on-focus by keeping inputs at >=16px */
+      input, textarea, select { font-size: 16px !important; }
+      /* Collapse multi-column dashboard / form grids to a single column */
+      .r-stats { grid-template-columns: repeat(2, 1fr) !important; }
+      .r-two   { grid-template-columns: 1fr !important; }
+      .r-cols2 { grid-template-columns: 1fr !important; }
+      .r-actions { flex-wrap: wrap !important; }
+      .r-pad { padding-left: 16px !important; padding-right: 16px !important; }
+      .modal-box { max-width: 100% !important; border-radius: 16px 16px 0 0 !important; max-height: 94vh !important; }
+      .modal-bg { align-items: flex-end !important; padding: 0 !important; }
+    }
+    /* Mobile slide-in sidebar drawer */
+    .drawer { transition: transform 0.22s ease; }
+    .drawer-overlay { animation: fadeBg 0.18s ease; }
   </style>
 </head>
 <body>
@@ -275,6 +303,40 @@ const persistToCloud = async (people) => {
   if (error) console.warn('Save error:', error.message);
 };
 
+/* ── App config (passcode + notification prefs) ───────────────────────────────
+   Stored in the same table under a separate row (id='config') so settings sync
+   across devices. The passcode is stored only as a salted SHA-256 hash. NOTE:
+   this is a client-side gate to keep casual visitors out — it is not a substitute
+   for server-side auth/RLS, since the public anon key is in the page source. */
+const CONFIG_ID = 'config';
+const PASS_SALT = 'resume::v1::';
+const sha256 = async (str) => {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
+};
+const hashPass = (pass) => sha256(PASS_SALT + pass);
+const DEFAULT_NOTIFY = { enabled:false, email:'', phone:'', leadDays:2, channels:{ email:true, sms:true }, types:{ events:true, meetings:true, birthdays:true } };
+const loadConfig = async () => {
+  const { data, error } = await db.from(TABLE).select('data').eq('id', CONFIG_ID).maybeSingle();
+  if (error) throw error;
+  return data ? data.data : null;
+};
+const persistConfig = async (config) => {
+  const { error } = await db.from(TABLE).upsert({ id: CONFIG_ID, data: config });
+  if (error) console.warn('Config save error:', error.message);
+};
+
+/* ── Responsive hook ──────────────────────────────────────────────────────── */
+const useIsMobile = (bp = 820) => {
+  const [m, setM] = useState(() => typeof window !== 'undefined' && window.innerWidth <= bp);
+  useEffect(() => {
+    const on = () => setM(window.innerWidth <= bp);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, [bp]);
+  return m;
+};
+
 /* ── Icons ────────────────────────────────────────────────────────────────── */
 const IC = {
   search: 'M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z',
@@ -297,6 +359,12 @@ const IC = {
   list: 'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01',
   chevron: 'm6 9 6 6 6-6',
   check: 'M20 6 9 17l-5-5',
+  lock: 'M19 11H5a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7a2 2 0 0 0-2-2zM7 11V7a5 5 0 0 1 10 0v4',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  menu: 'M3 12h18M3 6h18M3 18h18',
+  mail: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6',
+  phone: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z',
+  logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
 };
 
 const Svg = ({ d, size=16, color='currentColor', style }) => (
@@ -646,7 +714,7 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
           </div>
 
           {/* 7–8. Company + Role side-by-side */}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+          <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
             <div><Label>Company</Label><Input value={f.company} onChange={e=>set('company',e.target.value)} placeholder="e.g. Stripe" /></div>
             <div><Label>Role</Label><Input value={f.role} onChange={e=>set('role',e.target.value)} placeholder="e.g. Product Manager" /></div>
           </div>
@@ -736,7 +804,7 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
               <ContactMultiSelect people={people} selectedIds={participantIds} onChange={setParticipantIds} lockedId={lockedId} placeholder="Search contacts to add…" />
             </div>
           )}
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
+          <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
             <div>
               <Label>Date</Label>
               <Input type="date" value={f.date} onChange={e=>set('date',e.target.value)} />
@@ -780,7 +848,7 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
 
           <div style={{ padding:'12px 14px', background:'#FDF1E7', borderRadius:8, border:'1px solid #FBE2CE' }}>
             <p style={{ fontSize:11, fontWeight:700, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>📅 Next planned contact</p>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
+            <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
               <div>
                 <Label>Date</Label>
                 <Input type="date" value={f.nextMeeting||''} onChange={e=>set('nextMeeting',e.target.value)} style={{ background:'white' }} />
@@ -987,19 +1055,19 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
   return (
     <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
       {/* Top bar */}
-      <div style={{ padding:'14px 24px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
+      <div className="r-pad r-actions" style={{ padding:'14px 24px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
         <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, display:'flex', alignItems:'center' }}
           onMouseEnter={e=>e.currentTarget.style.color='#374151'} onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>
           <Icon name="back" size={20} color="currentColor" />
         </button>
         <Avatar name={person.name} size={44} />
-        <div style={{ flex:1 }}>
+        <div style={{ flex:1, minWidth:120 }}>
           <h1 style={{ fontSize:20, fontWeight:700, color:'#111827', marginBottom:1 }}>{person.name}</h1>
           {(person.role||person.company) && (
             <p style={{ fontSize:13, color:'#6b7280' }}>{[person.role, person.company].filter(Boolean).join(' · ')}</p>
           )}
         </div>
-        <div style={{ display:'flex', gap:6 }}>
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
           <Btn onClick={onAddConv} style={{ fontSize:13 }}>
             <Icon name="plus" size={14} color="white" />Log conversation
           </Btn>
@@ -1020,7 +1088,7 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
       </div>
 
       {/* Scrollable body */}
-      <div style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+      <div className="r-pad safe-bottom" style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
 
         {/* Resume Brief */}
         <ResumeCard person={person} />
@@ -1085,7 +1153,7 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
 
         {/* About */}
         <Card title="About">
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 24px' }}>
+          <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'8px 24px' }}>
             {person.birthday && <InfoPair label="Birthday" val={fmtBday(person.birthday)} />}
             {person.so && !partner && <InfoPair label="Partner" val={person.so} />}
             {person.howMet && <InfoPair label="Met at" val={person.howMet} />}
@@ -1922,7 +1990,7 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 };
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
-const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, search, setSearch, sortBy, setSortBy, saveStatus }) => {
+const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, onOpenSettings, onLock, isMobile, onCloseDrawer, search, setSearch, sortBy, setSortBy, saveStatus }) => {
   const [activeGroup, setActiveGroup] = useState(null);
   const [addMenu, setAddMenu] = useState(false);
   const addRef = useRef(null);
@@ -1960,9 +2028,17 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
   }, [people, search, isSearching, activeGroup]);
 
   return (
-    <div style={{ width:300, flexShrink:0, background:'white', borderRight:'1px solid #EAEAE8', display:'flex', flexDirection:'column', height:'100%' }}>
+    <div className="safe-top" style={{ width: isMobile ? 'min(300px, 84vw)' : 300, flexShrink:0, background:'white', borderRight:'1px solid #EAEAE8', display:'flex', flexDirection:'column', height:'100%' }}>
       {/* Header */}
       <div style={{ padding:'18px 16px 12px' }}>
+        {isMobile && (
+          <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:4 }}>
+            <button onClick={onCloseDrawer} aria-label="Close menu"
+              style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}>
+              <Icon name="x" size={20} color="currentColor" />
+            </button>
+          </div>
+        )}
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
           <button onClick={() => onSelect(null)} title="Go to dashboard"
             style={{ background:'none', border:'none', cursor:'pointer', padding:0, textAlign:'left', transition:'opacity 0.15s' }}
@@ -2107,6 +2183,22 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
             })}
           </>
         )}
+      </div>
+
+      {/* Footer: settings + lock */}
+      <div className="safe-bottom" style={{ borderTop:'1px solid #EAEAE8', padding:'8px 10px', display:'flex', gap:6 }}>
+        <button onClick={onOpenSettings} title="Settings & reminders"
+          style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
+          onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
+          onMouseLeave={e=>e.currentTarget.style.background='white'}>
+          <Icon name="settings" size={15} color="#6b7280" />Settings
+        </button>
+        <button onClick={onLock} title="Lock the app"
+          style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px 14px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
+          onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
+          onMouseLeave={e=>e.currentTarget.style.background='white'}>
+          <Icon name="lock" size={15} color="#6b7280" />Lock
+        </button>
       </div>
     </div>
   );
@@ -2689,21 +2781,21 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
   return (
     <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
       {/* Header */}
-      <div style={{ padding:'16px 28px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ flex:1, display:'flex', alignItems:'baseline', gap:12 }}>
+      <div className="r-pad r-actions" style={{ padding:'16px 28px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ flex:1, minWidth:160, display:'flex', alignItems:'baseline', gap:12 }}>
           <h1 style={{ fontSize:20, fontWeight:800, color:'#111827' }}>Your Network</h1>
           <span style={{ fontSize:13, color:'#9ca3af' }}>{greeting} — here's where things stand</span>
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           {headerBtn('Event', 'calendar', () => onAddEvent(null))}
           {headerBtn('Group log', 'msg', onLogGroup)}
           {headerBtn('Add contact', 'plus', onAddPerson, true)}
         </div>
       </div>
 
-      <div style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
+      <div className="r-pad safe-bottom" style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
         {/* Stats row */}
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:18 }}>
+        <div className="r-stats" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:18 }}>
           <StatCard icon="👥" label="New contacts (30d)" value={newContacts30} trend={newContacts30 - newContactsPrev30} />
           <StatCard icon="💬" label="Conversations this month" value={convs30}
             trend={convs30 - convsPrev30} />
@@ -2723,7 +2815,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
         <BirthdaySection people={people} onSelect={onSelectPerson} />
 
         {/* Two-column: catch up + upcoming */}
-        <div style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:14, marginBottom:14 }}>
+        <div className="r-two" style={{ display:'grid', gridTemplateColumns:'1.5fr 1fr', gap:14, marginBottom:14 }}>
           <CatchUpSection buckets={buckets} catchupTotal={catchupTotal} onSelect={onSelectPerson} onForgo={onForgo} />
           <UpcomingSection upcoming={upcoming} onSelect={onSelectPerson} />
         </div>
@@ -2911,7 +3003,7 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
             <Label>What's the event?</Label>
             <Input value={f.title} onChange={e=>set('title',e.target.value)} placeholder="e.g. Coffee catch-up, Dinner, Conference" autoFocus />
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:12 }}>
+          <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:12 }}>
             <div>
               <Label>Date</Label>
               <Input type="date" value={f.date} onChange={e=>set('date',e.target.value)} />
@@ -2943,7 +3035,10 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
 };
 
 /* ── App ──────────────────────────────────────────────────────────────────── */
-const App = () => {
+const App = ({ config, saveConfig, onLock }) => {
+  const isMobile = useIsMobile();
+  const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [showSettings, setShowSettings] = useState(false);
   const [people, setPeople] = useState([]);
   const [cloudReady, setCloudReady] = useState(false); // true once initial load done
   const [loadError, setLoadError] = useState(null);
@@ -3202,22 +3297,29 @@ const App = () => {
   if (loadError) return <ErrorScreen error={loadError} onRetry={doLoad} />;
   if (!cloudReady) return <LoadingScreen />;
 
-  return (
-    <div style={{ display:'flex', height:'100vh', overflow:'hidden' }}>
-      <Sidebar
-        people={people} selectedId={selectedId}
-        onSelect={setSelectedId}
-        onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
-        onBulkAdd={() => setShowBulkModal(true)}
-        onLogGroup={() => { setEditingConv(null); setConvGroupMode(true); setSelectedId(null); setShowConvModal(true); }}
-        onAddEvent={() => openAddEvent()}
-        onQuickCapture={() => setShowQuickCapture(true)}
-        search={search} setSearch={setSearch}
-        sortBy={sortBy} setSortBy={setSortBy}
-        saveStatus={saveStatus}
-      />
+  // Wrap selection so the mobile drawer closes when you pick a contact
+  const pick = (id) => { setSelectedId(id); setSidebarOpen(false); };
 
-      {selected ? (
+  const sidebar = (
+    <Sidebar
+      people={people} selectedId={selectedId}
+      onSelect={pick}
+      onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); setSidebarOpen(false); }}
+      onBulkAdd={() => { setShowBulkModal(true); setSidebarOpen(false); }}
+      onLogGroup={() => { setEditingConv(null); setConvGroupMode(true); setSelectedId(null); setShowConvModal(true); setSidebarOpen(false); }}
+      onAddEvent={() => { openAddEvent(); setSidebarOpen(false); }}
+      onQuickCapture={() => { setShowQuickCapture(true); setSidebarOpen(false); }}
+      onOpenSettings={() => { setShowSettings(true); setSidebarOpen(false); }}
+      onLock={onLock}
+      isMobile={isMobile}
+      onCloseDrawer={() => setSidebarOpen(false)}
+      search={search} setSearch={setSearch}
+      sortBy={sortBy} setSortBy={setSortBy}
+      saveStatus={saveStatus}
+    />
+  );
+
+  const mainPane = selected ? (
         <PersonDetail
           person={selected}
           people={people}
@@ -3235,7 +3337,7 @@ const App = () => {
       ) : (
         <Dashboard
           people={people}
-          onSelectPerson={setSelectedId}
+          onSelectPerson={pick}
           onAddPerson={() => { setEditingPerson(null); setShowPersonModal(true); }}
           onBulkAdd={() => setShowBulkModal(true)}
           onLogGroup={() => { setEditingConv(null); setConvGroupMode(true); setSelectedId(null); setShowConvModal(true); }}
@@ -3243,8 +3345,33 @@ const App = () => {
           onToggleCommitment={toggleFollowUpDone}
           onForgo={forgoPerson}
         />
-      )}
+      );
 
+  return (
+    <div style={{ display:'flex', height:'100%', overflow:'hidden' }}>
+      {/* Sidebar: persistent on desktop, slide-in drawer on mobile */}
+      {isMobile ? (
+        <>
+          {sidebarOpen && <div className="drawer-overlay" onClick={()=>setSidebarOpen(false)}
+            style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:90 }} />}
+          <div className="drawer" style={{ position:'fixed', top:0, left:0, bottom:0, zIndex:100,
+            transform: sidebarOpen ? 'translateX(0)' : 'translateX(-105%)',
+            boxShadow: sidebarOpen ? '0 0 40px rgba(0,0,0,0.25)' : 'none' }}>
+            {sidebar}
+          </div>
+        </>
+      ) : sidebar}
+
+      <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column', height:'100%' }}>
+        {isMobile && <MobileTopBar onMenu={() => setSidebarOpen(true)} />}
+        <div style={{ flex:1, minHeight:0, display:'flex', overflow:'hidden' }}>
+          {mainPane}
+        </div>
+      </div>
+
+      {showSettings && (
+        <SettingsModal config={config} onSave={saveConfig} onClose={() => setShowSettings(false)} />
+      )}
       {showPersonModal && (
         <PersonModal person={editingPerson} people={people} onSave={savePerson} onClose={() => { setShowPersonModal(false); setEditingPerson(null); }} />
       )}
@@ -3286,7 +3413,239 @@ const App = () => {
   );
 };
 
-ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+/* ── Mobile top bar ───────────────────────────────────────────────────────── */
+const MobileTopBar = ({ onMenu }) => (
+  <div className="safe-top" style={{ flexShrink:0, background:T.surface, borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', gap:10, padding:'10px 14px' }}>
+    <button onClick={onMenu} aria-label="Open contacts"
+      style={{ width:38, height:38, borderRadius:9, border:`1px solid ${T.borderStrong}`, background:T.surface, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <Icon name="menu" size={18} color={T.text} />
+    </button>
+    <div style={{ fontSize:18, fontWeight:900, color:T.accentStrong, letterSpacing:'-0.5px' }}>▶ Resume</div>
+  </div>
+);
+
+/* ── Lock screen (shared passcode gate) ───────────────────────────────────── */
+const LockScreen = ({ needsSetup, onVerify, onCreate }) => {
+  const [p1, setP1] = useState('');
+  const [p2, setP2] = useState('');
+  const [remember, setRemember] = useState(true);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const go = async () => {
+    setErr('');
+    if (needsSetup) {
+      if (p1.length < 4) return setErr('Use at least 4 characters.');
+      if (p1 !== p2) return setErr('Passcodes don’t match.');
+      setBusy(true); await onCreate(p1, remember); setBusy(false);
+    } else {
+      if (!p1) return;
+      setBusy(true); const ok = await onVerify(p1, remember); setBusy(false);
+      if (!ok) { setErr('Incorrect passcode.'); setP1(''); }
+    }
+  };
+  const inp = { width:'100%', padding:'12px 14px', border:`1px solid ${T.borderStrong}`, borderRadius:10, fontSize:16, color:T.text, background:'white', outline:'none' };
+  return (
+    <div className="safe-top safe-bottom" style={{ minHeight:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'linear-gradient(160deg,#FDF1E7,#F7F6F3)' }}>
+      <div className="modal-box" style={{ width:'100%', maxWidth:380, background:T.surface, borderRadius:18, padding:'28px 24px', boxShadow:'0 20px 60px rgba(0,0,0,0.12)', border:`1px solid ${T.border}` }}>
+        <div style={{ textAlign:'center', marginBottom:20 }}>
+          <div style={{ width:54, height:54, borderRadius:14, background:T.accent, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:12 }}>
+            <Icon name="lock" size={24} color="white" />
+          </div>
+          <h1 style={{ fontSize:22, fontWeight:900, color:T.accentStrong, letterSpacing:'-0.5px' }}>▶ Resume</h1>
+          <p style={{ fontSize:13, color:T.textSoft, marginTop:6 }}>
+            {needsSetup ? 'Set a passcode to protect your contacts. Anyone you share it with can sign in.' : 'Enter your passcode to continue.'}
+          </p>
+        </div>
+        <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+          <input type="password" value={p1} onChange={e=>setP1(e.target.value)} autoFocus
+            onKeyDown={e=>{ if(e.key==='Enter' && !needsSetup) go(); }}
+            placeholder={needsSetup ? 'New passcode' : 'Passcode'} style={inp} />
+          {needsSetup && (
+            <input type="password" value={p2} onChange={e=>setP2(e.target.value)}
+              onKeyDown={e=>{ if(e.key==='Enter') go(); }}
+              placeholder="Confirm passcode" style={inp} />
+          )}
+          {err && <p style={{ fontSize:12, color:'#dc2626', textAlign:'center' }}>{err}</p>}
+          <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:T.textSoft, cursor:'pointer', userSelect:'none' }}>
+            <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{ width:16, height:16, accentColor:T.accent }} />
+            Keep me signed in on this device
+          </label>
+          <button onClick={go} disabled={busy}
+            style={{ marginTop:4, padding:'12px', borderRadius:10, border:'none', background:T.accent, color:'white', fontSize:15, fontWeight:700, cursor: busy?'default':'pointer', opacity: busy?0.7:1 }}>
+            {busy ? 'Please wait…' : needsSetup ? 'Set passcode & continue' : 'Unlock'}
+          </button>
+        </div>
+        <p style={{ fontSize:10.5, color:T.faint, textAlign:'center', marginTop:16, lineHeight:1.5 }}>
+          This is a lightweight gate to keep casual visitors out. For stronger security, enable Supabase Auth + row-level security (see README).
+        </p>
+      </div>
+    </div>
+  );
+};
+
+/* ── Settings (account + notification preferences) ────────────────────────── */
+const SettingsField = ({ label, icon, children, hint }) => (
+  <div>
+    <Label>{icon && <Icon name={icon} size={12} color="#9ca3af" style={{ marginRight:5, verticalAlign:'-1px' }} />}{label}</Label>
+    {children}
+    {hint && <p style={{ fontSize:11, color:T.faint, marginTop:4 }}>{hint}</p>}
+  </div>
+);
+const SettingsRow = ({ label, on, onChange }) => (
+  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0' }}>
+    <span style={{ fontSize:14, color:'#374151' }}>{label}</span>
+    <Toggle on={on} onChange={onChange} />
+  </div>
+);
+const SettingsModal = ({ config, onSave, onClose }) => {
+  const [notify, setNotify] = useState(() => ({ ...DEFAULT_NOTIFY, ...(config?.notify||{}),
+    channels:{ ...DEFAULT_NOTIFY.channels, ...(config?.notify?.channels||{}) },
+    types:{ ...DEFAULT_NOTIFY.types, ...(config?.notify?.types||{}) } }));
+  const [np1, setNp1] = useState(''); const [np2, setNp2] = useState('');
+  const [passMsg, setPassMsg] = useState('');
+  const [saving, setSaving] = useState(false);
+  const setN = (k,v) => setNotify(prev=>({ ...prev, [k]:v }));
+  const setCh = (k,v) => setNotify(prev=>({ ...prev, channels:{ ...prev.channels, [k]:v } }));
+  const setTy = (k,v) => setNotify(prev=>({ ...prev, types:{ ...prev.types, [k]:v } }));
+
+  const save = async () => {
+    setPassMsg('');
+    const next = { ...config, notify };
+    if (np1 || np2) {
+      if (np1.length < 4) { setPassMsg('New passcode must be at least 4 characters.'); return; }
+      if (np1 !== np2) { setPassMsg('New passcodes don’t match.'); return; }
+      next.passHash = await hashPass(np1);
+    }
+    setSaving(true);
+    await onSave(next);
+    setSaving(false);
+    onClose();
+  };
+
+  return (
+    <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
+      <div className="modal-box" style={{ background:T.surface, borderRadius:16, width:'100%', maxWidth:520, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:`1px solid ${T.border}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <div>
+            <h2 style={{ fontSize:18, fontWeight:700, color:T.text }}>Settings</h2>
+            <p style={{ marginTop:2, fontSize:13, color:T.faint }}>Reminders &amp; passcode</p>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:T.faint, padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+        </div>
+
+        <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:18 }}>
+          {/* Reminders */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <Icon name="bell" size={16} color={T.accent} />
+              <span style={{ fontSize:15, fontWeight:700, color:T.text }}>Email &amp; text reminders</span>
+            </div>
+            <Toggle on={notify.enabled} onChange={v=>setN('enabled',v)} />
+          </div>
+
+          {notify.enabled && (
+            <div style={{ display:'flex', flexDirection:'column', gap:16, padding:'4px 2px' }}>
+              <SettingsField label="Email address" icon="mail" hint="Daily digest is sent here.">
+                <Input type="email" value={notify.email} onChange={e=>setN('email',e.target.value)} placeholder="you@example.com" />
+              </SettingsField>
+              <SettingsField label="Mobile number" icon="phone" hint="Include country code, e.g. +14155551234.">
+                <Input type="tel" value={notify.phone} onChange={e=>setN('phone',e.target.value)} placeholder="+14155551234" />
+              </SettingsField>
+              <SettingsField label="Remind me how many days ahead?">
+                <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                  <input type="number" min={0} max={30} value={notify.leadDays}
+                    onChange={e=>setN('leadDays', Math.max(0, Math.min(30, parseInt(e.target.value)||0)))}
+                    style={{ width:64, padding:'8px 10px', border:`1px solid ${T.borderStrong}`, borderRadius:8, fontSize:14, textAlign:'center' }} />
+                  <span style={{ fontSize:14, color:T.textSoft }}>day(s) before</span>
+                </div>
+              </SettingsField>
+              <div>
+                <Label>Send via</Label>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
+                  <Chip active={notify.channels.email} onClick={()=>setCh('email', !notify.channels.email)}>✉️ Email</Chip>
+                  <Chip active={notify.channels.sms} onClick={()=>setCh('sms', !notify.channels.sms)}>💬 Text (SMS)</Chip>
+                </div>
+              </div>
+              <div style={{ padding:'4px 14px', background:T.bg, borderRadius:10, border:`1px solid ${T.border}` }}>
+                <SettingsRow label="Upcoming events" on={notify.types.events} onChange={v=>setTy('events',v)} />
+                <SettingsRow label="Scheduled meetings" on={notify.types.meetings} onChange={v=>setTy('meetings',v)} />
+                <SettingsRow label="Birthdays" on={notify.types.birthdays} onChange={v=>setTy('birthdays',v)} />
+              </div>
+              <p style={{ fontSize:11, color:T.faint, lineHeight:1.5, background:T.accentSoft, padding:'10px 12px', borderRadius:8 }}>
+                Sending requires the one-time backend setup in <b>NOTIFICATIONS.md</b> (a scheduled Supabase function with your Resend &amp; Twilio keys). These preferences are read by that job.
+              </p>
+            </div>
+          )}
+
+          {/* Passcode */}
+          <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+              <Icon name="lock" size={16} color={T.textSoft} />
+              <span style={{ fontSize:15, fontWeight:700, color:T.text }}>Change passcode</span>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }} className="r-cols2">
+              <Input type="password" value={np1} onChange={e=>setNp1(e.target.value)} placeholder="New passcode" />
+              <Input type="password" value={np2} onChange={e=>setNp2(e.target.value)} placeholder="Confirm" />
+            </div>
+            {passMsg && <p style={{ fontSize:12, color:'#dc2626', marginTop:8 }}>{passMsg}</p>}
+            <p style={{ fontSize:11, color:T.faint, marginTop:6 }}>Leave blank to keep your current passcode.</p>
+          </div>
+        </div>
+
+        <div style={{ padding:'14px 24px', borderTop:`1px solid ${T.border}`, display:'flex', gap:8, justifyContent:'flex-end' }}>
+          <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+          <Btn onClick={save} style={{ opacity: saving?0.6:1 }}>{saving ? 'Saving…' : 'Save settings'}</Btn>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Root: config load + passcode gate, then the app ──────────────────────── */
+const Root = () => {
+  const [config, setConfig] = useState(null);
+  const [ready, setReady] = useState(false);
+  const [cfgError, setCfgError] = useState(null);
+  const [unlocked, setUnlocked] = useState(() =>
+    sessionStorage.getItem('resume_unlocked') === '1' || localStorage.getItem('resume_unlocked_persist') === '1');
+
+  const fetchConfig = () => {
+    setCfgError(null); setReady(false);
+    loadConfig()
+      .then(c => { setConfig(c || { passHash:null, notify:{ ...DEFAULT_NOTIFY } }); setReady(true); })
+      .catch(e => { setCfgError(e.message || 'Could not load settings'); setReady(true); });
+  };
+  useEffect(() => { fetchConfig(); }, []);
+
+  const markUnlocked = (remember) => {
+    sessionStorage.setItem('resume_unlocked', '1');
+    if (remember) localStorage.setItem('resume_unlocked_persist', '1');
+    setUnlocked(true);
+  };
+  const onCreate = async (pass, remember) => {
+    const passHash = await hashPass(pass);
+    const next = { ...(config||{}), passHash, notify: config?.notify || { ...DEFAULT_NOTIFY } };
+    setConfig(next); await persistConfig(next); markUnlocked(remember);
+  };
+  const onVerify = async (pass, remember) => {
+    const h = await hashPass(pass);
+    if (config?.passHash && h === config.passHash) { markUnlocked(remember); return true; }
+    return false;
+  };
+  const onLock = () => {
+    sessionStorage.removeItem('resume_unlocked');
+    localStorage.removeItem('resume_unlocked_persist');
+    setUnlocked(false);
+  };
+  const saveConfig = async (next) => { setConfig(next); await persistConfig(next); };
+
+  if (cfgError) return <ErrorScreen error={cfgError} onRetry={fetchConfig} />;
+  if (!ready) return <LoadingScreen />;
+  if (!unlocked) return <LockScreen needsSetup={!config?.passHash} onCreate={onCreate} onVerify={onVerify} />;
+  return <App config={config} saveConfig={saveConfig} onLock={onLock} />;
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
 </script>
 </body>
 </html>
