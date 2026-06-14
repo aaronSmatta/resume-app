@@ -189,6 +189,70 @@ const daysUntilLabel = (ds) => {
   return fmt(ds);
 };
 
+/* ── Recurring events ─────────────────────────────────────────────────────────
+   An event may carry recurrence = { freq, until } where freq is one of
+   daily | weekly | biweekly | monthly | yearly, and until is an inclusive
+   'YYYY-MM-DD' end date (empty = capped at ~2 years for safety). Occurrences are
+   expanded on demand for the calendar / upcoming lists rather than stored. */
+const ymd = (d) => `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+const parseYMD_UTC = (s) => { const [y,m,d] = (s||'').split('-').map(Number); return (y&&m&&d) ? new Date(Date.UTC(y,m-1,d)) : null; };
+const RECUR_FREQS = [
+  { v:'none',     label:'Does not repeat' },
+  { v:'daily',    label:'Daily' },
+  { v:'weekly',   label:'Weekly' },
+  { v:'biweekly', label:'Every 2 weeks' },
+  { v:'monthly',  label:'Monthly' },
+  { v:'yearly',   label:'Yearly' },
+];
+const RECUR_EVERY = { daily:'day', weekly:'week', biweekly:'2 weeks', monthly:'month', yearly:'year' };
+const recurrenceText = (rec) => {
+  if (!rec || !rec.freq || rec.freq === 'none') return '';
+  const base = rec.freq === 'biweekly' ? 'Repeats every 2 weeks' : `Repeats ${rec.freq}`;
+  return rec.until ? `${base} until ${fmt(rec.until)}` : base;
+};
+// The k-th occurrence of a recurrence, computed from the base date (so monthly/
+// yearly re-anchor to the original day-of-month, e.g. the 31st each month).
+const occAt = (base, freq, k) => {
+  const n = new Date(base.getTime());
+  if (freq === 'daily') n.setUTCDate(base.getUTCDate() + k);
+  else if (freq === 'weekly') n.setUTCDate(base.getUTCDate() + 7 * k);
+  else if (freq === 'biweekly') n.setUTCDate(base.getUTCDate() + 14 * k);
+  else if (freq === 'monthly') {
+    const day = base.getUTCDate();
+    n.setUTCDate(1); n.setUTCMonth(base.getUTCMonth() + k);
+    const dim = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 0)).getUTCDate();
+    n.setUTCDate(Math.min(day, dim)); // clamp (e.g. Jan 31 → Feb 28)
+  } else if (freq === 'yearly') n.setUTCFullYear(base.getUTCFullYear() + k);
+  else return null;
+  return n;
+};
+// All occurrence dates of `ev` that fall within [startStr, endStr] (inclusive).
+const expandEventDates = (ev, startStr, endStr) => {
+  const base = parseYMD_UTC(ev.date);
+  if (!base) return [];
+  const start = parseYMD_UTC(startStr), end = parseYMD_UTC(endStr);
+  const rec = ev.recurrence;
+  if (!rec || !rec.freq || rec.freq === 'none') {
+    return (base >= start && base <= end) ? [ev.date] : [];
+  }
+  const safetyCap = new Date(Date.UTC(base.getUTCFullYear() + 2, base.getUTCMonth(), base.getUTCDate()));
+  const until = rec.until ? parseYMD_UTC(rec.until) : safetyCap;
+  const hardEnd = (until && until < safetyCap) ? until : safetyCap;
+  const out = [];
+  for (let k = 0; k < 1000; k++) {
+    const cur = occAt(base, rec.freq, k);
+    if (!cur || cur > end || cur > hardEnd) break;
+    if (cur >= start) out.push(ymd(cur));
+  }
+  return out;
+};
+// Soonest occurrence date >= fromStr (or null), respecting `until`.
+const nextOccurrence = (ev, fromStr) => {
+  const occ = expandEventDates(ev, fromStr, ymd(new Date(Date.UTC(
+    parseYMD_UTC(fromStr).getUTCFullYear() + 2, parseYMD_UTC(fromStr).getUTCMonth(), parseYMD_UTC(fromStr).getUTCDate()))));
+  return occ.length ? occ[0] : null;
+};
+
 /* ── Resume Brief Generator ───────────────────────────────────────────────── */
 const buildResumeBrief = (person) => {
   const sorted = [...(person.conversations||[])].sort((a,b)=>b.date.localeCompare(a.date));
@@ -387,6 +451,7 @@ const IC = {
   mail: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6',
   phone: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  repeat: 'M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3',
   sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42',
   moon: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z',
 };
@@ -1155,7 +1220,13 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
   // Upcoming: standalone events + meetings scheduled from conversations
   const upcoming = useMemo(() => {
     const out = [];
-    (person.events||[]).forEach(ev => { if (ev.date >= todayStr) out.push({ kind:'event', id:ev.id, date:ev.date, time:ev.time, title:ev.title||'Event', location:ev.location, participants:ev.participants, raw:ev }); });
+    // For recurring events show the next occurrence; otherwise the date itself.
+    (person.events||[]).forEach(ev => {
+      const repeats = !!(ev.recurrence && ev.recurrence.freq && ev.recurrence.freq!=='none');
+      const date = repeats ? nextOccurrence(ev, todayStr) : (ev.date >= todayStr ? ev.date : null);
+      if (!date) return;
+      out.push({ kind:'event', id:ev.id, date, time:ev.time, title:ev.title||'Event', location:ev.location, participants:ev.participants, repeatText: recurrenceText(ev.recurrence), raw:ev });
+    });
     (person.conversations||[]).forEach(c => { if (c.nextMeeting && c.nextMeeting >= todayStr) out.push({ kind:'meeting', id:c.id, date:c.nextMeeting, title:c.nextMeetingNote||'Catch-up' }); });
     return out.sort((a,b)=>a.date.localeCompare(b.date));
   }, [person]);
@@ -1224,9 +1295,12 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
                       <p style={{ fontSize:17, fontWeight:800, color:'var(--text-strong)', lineHeight:1.1 }}>{d.getDate()}</p>
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontSize:13, fontWeight:600, color:'var(--text-strong)' }}>{[u.time, u.title].filter(Boolean).join(' · ')}</p>
+                      <p style={{ fontSize:13, fontWeight:600, color:'var(--text-strong)', display:'flex', alignItems:'center', gap:5 }}>
+                        {[u.time, u.title].filter(Boolean).join(' · ')}
+                        {u.repeatText && <Icon name="repeat" size={11} color="var(--accent)" />}
+                      </p>
                       <p style={{ fontSize:11, color:'var(--faint)' }}>
-                        {dd}{u.location ? ` · ${u.location}` : ''}{u.participants?.length>1 ? ` · with ${u.participants.length} people` : (u.kind==='meeting' ? ' · from a conversation' : '')}
+                        {dd}{u.location ? ` · ${u.location}` : ''}{u.participants?.length>1 ? ` · with ${u.participants.length} people` : (u.kind==='meeting' ? ' · from a conversation' : '')}{u.repeatText ? ` · ${u.repeatText}` : ''}
                       </p>
                     </div>
                     {u.kind==='event' && (
@@ -2455,7 +2529,11 @@ const UpcomingSection = ({ upcoming, onSelect }) => (
                 <Avatar name={c.person.name} size={18} />
                 <span style={{ fontSize:13, fontWeight:600, color:'var(--text-strong)' }}>{c.person.name}</span>
               </div>
-              {c.nextMeetingNote && <p style={{ fontSize:12, color:'var(--text-soft)', lineHeight:'1.4' }}>{c.nextMeetingNote}</p>}
+              {c.nextMeetingNote && (
+                <p style={{ fontSize:12, color:'var(--text-soft)', lineHeight:'1.4', display:'flex', alignItems:'center', gap:4 }}>
+                  {c.repeats && <Icon name="repeat" size={11} color="var(--accent)" />}{c.nextMeetingNote}
+                </p>
+              )}
               <p style={{ fontSize:11, color:urgency, fontWeight:500, marginTop:2 }}>
                 {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`}
               </p>
@@ -2536,17 +2614,19 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
   const monthEvents = useMemo(() => {
     const map = {};
     const add = (day, entry) => { if (!map[day]) map[day]=[]; map[day].push(entry); };
-    const seenGroups = new Set();
+    const seen = new Set(); // de-dupe group events per (groupId, occurrence date)
+    const mStart = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-01`;
+    const mEnd = `${viewYear}-${String(viewMonth+1).padStart(2,'0')}-${String(new Date(viewYear, viewMonth+1, 0).getDate()).padStart(2,'0')}`;
     people.forEach(p => {
-      // Standalone scheduled events
+      // Standalone scheduled events (expand recurrences within the viewed month)
       (p.events||[]).forEach(ev => {
         if (!ev.date) return;
-        if (ev.groupId) { if (seenGroups.has(ev.groupId)) return; seenGroups.add(ev.groupId); }
-        const d = new Date(ev.date+'T12:00:00');
-        if (d.getFullYear()===viewYear && d.getMonth()===viewMonth) {
-          const who = ev.participants?.length ? ev.participants.join(', ') : p.name;
-          add(d.getDate(), { person:p, eventId:ev.id, label:[ev.time, ev.title||'Event'].filter(Boolean).join(' · '), sub:who, type:'event' });
-        }
+        const who = ev.participants?.length ? ev.participants.join(', ') : p.name;
+        expandEventDates(ev, mStart, mEnd).forEach(ds => {
+          if (ev.groupId) { const k = ev.groupId+'@'+ds; if (seen.has(k)) return; seen.add(k); }
+          const day = parseInt(ds.split('-')[2], 10);
+          add(day, { person:p, eventId:ev.id, label:[ev.time, ev.title||'Event'].filter(Boolean).join(' · '), sub:who, type:'event', recurring: !!(ev.recurrence && ev.recurrence.freq && ev.recurrence.freq!=='none') });
+        });
       });
       // Scheduled meetings (from conversations)
       (p.conversations||[]).forEach(c => {
@@ -2894,13 +2974,18 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
     const items = [];
     // Meetings scheduled from conversations
     allConvs.forEach(c => { if (c.nextMeeting && inRange(c.nextMeeting)) items.push({ key:'m'+c.id, person:c.person, nextMeeting:c.nextMeeting, nextMeetingNote:c.nextMeetingNote }); });
-    // Standalone scheduled events (de-dupe group copies by groupId)
+    // Standalone scheduled events — expand recurrences; de-dupe groups per date
+    const pad = n => String(n).padStart(2,'0');
+    const ds = (d) => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+    const startStr = ds(today0), endStr = ds(in30);
     const seen = new Set();
     people.forEach(p => (p.events||[]).forEach(ev => {
-      if (!ev.date || !inRange(ev.date)) return;
-      if (ev.groupId) { if (seen.has(ev.groupId)) return; seen.add(ev.groupId); }
+      const repeats = !!(ev.recurrence && ev.recurrence.freq && ev.recurrence.freq!=='none');
       const note = ev.participants?.length>1 ? `${ev.title||'Event'} (group of ${ev.participants.length})` : (ev.title||'Event');
-      items.push({ key:'e'+ev.id, person:p, nextMeeting:ev.date, nextMeetingNote:[ev.time, note].filter(Boolean).join(' · ') });
+      expandEventDates(ev, startStr, endStr).forEach(occ => {
+        if (ev.groupId) { const k = ev.groupId+'@'+occ; if (seen.has(k)) return; seen.add(k); }
+        items.push({ key:'e'+ev.id+occ, person:p, nextMeeting:occ, repeats, nextMeetingNote:[ev.time, note].filter(Boolean).join(' · ') });
+      });
     }));
     return items.sort((a,b) => a.nextMeeting.localeCompare(b.nextMeeting)).slice(0, 8);
   }, [allConvs, people]);
@@ -3153,8 +3238,17 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
   const [f, setF] = useState(event || blank);
   const set = (k,v) => setF(prev=>({...prev,[k]:v}));
   const [participantIds, setParticipantIds] = useState(event?._participantIds || defaultParticipantIds);
+  const [freq, setFreq] = useState(event?.recurrence?.freq || 'none');
+  const [until, setUntil] = useState(event?.recurrence?.until || '');
   const isEdit = !!event?.id;
-  const canSave = f.date && participantIds.length > 0;
+  const recurs = freq !== 'none';
+  const untilInvalid = recurs && until && until < f.date;
+  const canSave = f.date && participantIds.length > 0 && !untilInvalid;
+  const submit = () => {
+    const recurrence = recurs ? { freq, until: until || '' } : null;
+    onSave({ ...f, recurrence }, participantIds);
+  };
+  const selStyle = { width:'100%', padding:'9px 12px', border:`1px solid ${T.borderStrong}`, borderRadius:8, fontSize:14, color:T.text, background:T.surface, cursor:'pointer', outline:'none' };
 
   return (
     <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
@@ -3190,11 +3284,33 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
             <Label>With whom?</Label>
             <ContactMultiSelect people={people} selectedIds={participantIds} onChange={setParticipantIds} lockedId={lockedId} placeholder="Search contacts…" />
           </div>
+
+          {/* Recurrence */}
+          <div className="r-cols2" style={{ display:'grid', gridTemplateColumns: recurs ? '1fr 1fr' : '1fr', gap:12 }}>
+            <div>
+              <Label><Icon name="repeat" size={12} color="#9ca3af" style={{ marginRight:5, verticalAlign:'-1px' }} />Repeat</Label>
+              <select value={freq} onChange={e=>setFreq(e.target.value)} style={selStyle}>
+                {RECUR_FREQS.map(o => <option key={o.v} value={o.v}>{o.label}</option>)}
+              </select>
+            </div>
+            {recurs && (
+              <div>
+                <Label>Ends on <span style={{ textTransform:'none', fontWeight:400, color:T.faint }}>— optional</span></Label>
+                <Input type="date" value={until} min={f.date} onChange={e=>setUntil(e.target.value)} />
+              </div>
+            )}
+          </div>
+          {recurs && (
+            <p style={{ fontSize:11, color: untilInvalid ? '#dc2626' : T.faint, marginTop:-6 }}>
+              {untilInvalid ? 'End date must be on or after the start date.'
+                : `${recurrenceText({ freq, until })}${until ? '' : ' (no end date — repeats indefinitely)'}.`}
+            </p>
+          )}
         </div>
 
         <div style={{ padding:'14px 24px', borderTop:`1px solid ${T.border}`, display:'flex', gap:8, justifyContent:'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
-          <Btn onClick={() => canSave && onSave(f, participantIds)} style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}>
+          <Btn onClick={() => canSave && submit()} style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}>
             {isEdit ? 'Save event' : participantIds.length>1 ? `Add event for ${participantIds.length}` : 'Add to calendar'}
           </Btn>
         </div>
@@ -3444,7 +3560,9 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
       return stripped.map(p => ids.includes(p.id)
         ? { ...p, events: [...(p.events||[]), {
             id: event.id, date: event.date, time: event.time||'', title: event.title||'',
-            location: event.location||'', groupId, ...(isGroup ? { participants: names } : {}),
+            location: event.location||'', groupId,
+            ...(event.recurrence ? { recurrence: event.recurrence } : {}),
+            ...(isGroup ? { participants: names } : {}),
           }] }
         : p);
     });

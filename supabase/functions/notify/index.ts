@@ -49,6 +49,44 @@ function nextBirthday(bday: string, today: Date): { date: Date; days: number } |
 const fmtDate = (d: Date) =>
   d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const relLabel = (n: number) => (n === 0 ? "today" : n === 1 ? "tomorrow" : `in ${n} days`);
+const ymdKey = (d: Date) => d.toISOString().slice(0, 10);
+
+// The k-th occurrence from a base date (monthly/yearly re-anchor to base day).
+function occAt(base: Date, freq: string, k: number): Date | null {
+  const n = new Date(base.getTime());
+  if (freq === "daily") n.setUTCDate(base.getUTCDate() + k);
+  else if (freq === "weekly") n.setUTCDate(base.getUTCDate() + 7 * k);
+  else if (freq === "biweekly") n.setUTCDate(base.getUTCDate() + 14 * k);
+  else if (freq === "monthly") {
+    const day = base.getUTCDate();
+    n.setUTCDate(1); n.setUTCMonth(base.getUTCMonth() + k);
+    const dim = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth() + 1, 0)).getUTCDate();
+    n.setUTCDate(Math.min(day, dim));
+  } else if (freq === "yearly") n.setUTCFullYear(base.getUTCFullYear() + k);
+  else return null;
+  return n;
+}
+// Occurrence dates of an event within [today, today+lead] (handles recurrence).
+function eventOccurrences(ev: any, today: Date, lead: number): { date: Date; days: number }[] {
+  const base = parseYMD(ev.date);
+  if (!base) return [];
+  const windowEnd = new Date(today.getTime() + lead * 86400000);
+  const rec = ev.recurrence;
+  const within = (d: Date) => { const days = daysBetween(today, d); return days >= 0 && days <= lead ? days : -1; };
+  if (!rec || !rec.freq || rec.freq === "none") {
+    const days = within(base);
+    return days >= 0 ? [{ date: base, days }] : [];
+  }
+  const until = rec.until ? parseYMD(rec.until) : null;
+  const out: { date: Date; days: number }[] = [];
+  for (let k = 0; k < 2000; k++) {
+    const cur = occAt(base, rec.freq, k);
+    if (!cur || cur > windowEnd || (until && cur > until)) break;
+    const days = within(cur);
+    if (days >= 0) out.push({ date: cur, days });
+  }
+  return out;
+}
 
 // ── Supabase read ───────────────────────────────────────────────────────────
 async function readRows(): Promise<{ people: any[]; config: any }> {
@@ -78,13 +116,11 @@ function collectDue(people: any[], notify: any): Item[] {
 
     if (want.events) {
       for (const ev of p.events ?? []) {
-        const d = parseYMD(ev.date);
-        if (!d) continue;
-        if (ev.groupId) { if (seenGroups.has(ev.groupId)) continue; seenGroups.add(ev.groupId); }
-        const days = daysBetween(today, d);
-        if (days >= 0 && days <= lead) {
+        for (const occ of eventOccurrences(ev, today, lead)) {
+          // De-dupe group events per (groupId, occurrence date)
+          if (ev.groupId) { const k = ev.groupId + "@" + ymdKey(occ.date); if (seenGroups.has(k)) continue; seenGroups.add(k); }
           const parts = [ev.time, ev.title || "Event"].filter(Boolean).join(" ");
-          items.push({ date: d, days, line: `📅 ${parts} — ${ev.participants?.length ? ev.participants.join(", ") : p.name}${ev.location ? ` @ ${ev.location}` : ""} (${relLabel(days)})` });
+          items.push({ date: occ.date, days: occ.days, line: `📅 ${parts} — ${ev.participants?.length ? ev.participants.join(", ") : p.name}${ev.location ? ` @ ${ev.location}` : ""} (${relLabel(occ.days)})` });
         }
       }
     }
