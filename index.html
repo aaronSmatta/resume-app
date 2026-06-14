@@ -303,18 +303,11 @@ const persistToCloud = async (people) => {
   if (error) console.warn('Save error:', error.message);
 };
 
-/* ── App config (passcode + notification prefs) ───────────────────────────────
+/* ── App config (notification prefs) ──────────────────────────────────────────
    Stored in the same table under a separate row (id='config') so settings sync
-   across devices. The passcode is stored only as a salted SHA-256 hash. NOTE:
-   this is a client-side gate to keep casual visitors out — it is not a substitute
-   for server-side auth/RLS, since the public anon key is in the page source. */
+   across devices. Access is protected by Supabase Auth + row-level security —
+   see AUTH_SETUP.md. */
 const CONFIG_ID = 'config';
-const PASS_SALT = 'resume::v1::';
-const sha256 = async (str) => {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-  return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
-};
-const hashPass = (pass) => sha256(PASS_SALT + pass);
 const DEFAULT_NOTIFY = { enabled:false, email:'', phone:'', leadDays:2, channels:{ email:true, sms:true }, types:{ events:true, meetings:true, birthdays:true } };
 const loadConfig = async () => {
   const { data, error } = await db.from(TABLE).select('data').eq('id', CONFIG_ID).maybeSingle();
@@ -874,14 +867,55 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
 };
 
 /* ── Conversation Card ────────────────────────────────────────────────────── */
-const ConvCard = ({ conv, onEdit, onDelete }) => {
+/* Inline-editable checklist used inside a conversation card (follow-ups / open
+   questions). Items can be added, removed, and checked off — persisted by the
+   parent via onChange / onToggleDone. */
+const EditableConvList = ({ items=[], done=[], marker, color, onChange, onToggleDone, placeholder, addLabel='Add item' }) => {
+  const [val, setVal] = useState('');
+  const doneSet = new Set(done || []);
+  const add = () => { const t = val.trim(); if (!t) return; onChange([...(items||[]), t]); setVal(''); };
+  const remove = (i) => onChange((items||[]).filter((_,j)=>j!==i));
+  return (
+    <div>
+      {(items||[]).map((it, i) => {
+        const isDone = doneSet.has(it);
+        return (
+          <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'3px 0' }}>
+            <button onClick={()=>onToggleDone(it)} title={isDone ? 'Mark not done' : 'Mark done'}
+              style={{ flexShrink:0, marginTop:1, width:17, height:17, borderRadius:5, cursor:'pointer',
+                border:`1.5px solid ${isDone ? color : '#cbd5e1'}`, background:isDone?color:'white',
+                display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
+              {isDone && <Icon name="check" size={11} color="white" />}
+            </button>
+            <span style={{ flex:1, fontSize:14, lineHeight:1.45, color: isDone ? '#9ca3af' : '#374151', textDecoration: isDone ? 'line-through' : 'none' }}>{it}</span>
+            <button onClick={()=>remove(i)} title="Remove"
+              style={{ flexShrink:0, background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'0 2px', marginTop:1 }}
+              onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+              <Icon name="x" size={13} color="currentColor" />
+            </button>
+          </div>
+        );
+      })}
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+        <span style={{ color:'#d1d5db', fontSize:15, flexShrink:0, width:17, textAlign:'center' }}>+</span>
+        <input value={val} onChange={e=>setVal(e.target.value)}
+          onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } }}
+          placeholder={placeholder}
+          style={{ flex:1, border:'none', borderBottom:'1px solid #EDEDEC', outline:'none', background:'transparent', fontSize:13, color:'#6b7280', padding:'3px 0' }} />
+        {val.trim() && <button onClick={add} style={{ fontSize:12, fontWeight:600, color:color, background:'none', border:'none', cursor:'pointer' }}>{addLabel}</button>}
+      </div>
+    </div>
+  );
+};
+
+const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
   const [open, setOpen] = useState(false);
-  const hasBody = conv.insights || conv.openQuestions?.length || conv.followUps?.length || conv.notes;
+  const toggleIn = (arr, t) => (arr||[]).includes(t) ? (arr||[]).filter(x=>x!==t) : [...(arr||[]), t];
 
   return (
     <div style={{ border:'1px solid #EAEAE8', borderRadius:10, overflow:'hidden', marginBottom:10, background:'white', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
-      <div style={{ padding:'12px 14px', cursor: hasBody ? 'pointer' : 'default' }}
-        onClick={() => hasBody && setOpen(o=>!o)}>
+      <div style={{ padding:'12px 14px', cursor:'pointer' }}
+        onClick={() => setOpen(o=>!o)}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:8, marginBottom: conv.topics?.length ? 7 : 0 }}>
@@ -919,40 +953,36 @@ const ConvCard = ({ conv, onEdit, onDelete }) => {
               onMouseLeave={e=>{ e.currentTarget.style.color='#fca5a5'; e.currentTarget.style.background='none'; }}>
               <Icon name="trash" size={14} color="currentColor" />
             </button>
-            {hasBody && (
-              <span style={{ color:'#9ca3af', paddingLeft:2 }}>
-                <Icon name={open?'chevD':'chevR'} size={16} color="currentColor" />
-              </span>
-            )}
+            <span style={{ color:'#9ca3af', paddingLeft:2 }}>
+              <Icon name={open?'chevD':'chevR'} size={16} color="currentColor" />
+            </span>
           </div>
         </div>
       </div>
 
-      {open && hasBody && (
+      {open && (
         <div style={{ padding:'2px 14px 14px', borderTop:'1px solid #F7F6F3' }}>
           {conv.insights && (
             <Section label="Insights">
               <p style={{ fontSize:14, color:'#374151', lineHeight:'1.6', margin:0 }}>{conv.insights}</p>
             </Section>
           )}
-          {conv.openQuestions?.length > 0 && (
-            <Section label="Open questions">
-              {conv.openQuestions.map((q,i) => (
-                <p key={i} style={{ fontSize:14, color:'#374151', display:'flex', gap:8, margin:'4px 0', alignItems:'flex-start' }}>
-                  <span style={{ color:'#f59e0b', flexShrink:0, fontWeight:700 }}>?</span>{q}
-                </p>
-              ))}
-            </Section>
-          )}
-          {conv.followUps?.length > 0 && (
-            <Section label="Follow-ups">
-              {conv.followUps.map((f,i) => (
-                <p key={i} style={{ fontSize:14, color:'#374151', display:'flex', gap:8, margin:'4px 0', alignItems:'flex-start' }}>
-                  <span style={{ color:'#F26B1D', flexShrink:0 }}>→</span>{f}
-                </p>
-              ))}
-            </Section>
-          )}
+          <Section label="Open questions">
+            <EditableConvList
+              items={conv.openQuestions} done={conv.doneQuestions} marker="?" color="#f59e0b"
+              placeholder="Add a question to ask next time…" addLabel="Add"
+              onChange={(arr)=>onPatch(conv.id, { openQuestions:arr, doneQuestions:(conv.doneQuestions||[]).filter(x=>arr.includes(x)) })}
+              onToggleDone={(t)=>onPatch(conv.id, { doneQuestions: toggleIn(conv.doneQuestions, t) })}
+            />
+          </Section>
+          <Section label="Follow-ups & upcoming events">
+            <EditableConvList
+              items={conv.followUps} done={conv.doneFollowUps} marker="→" color="#F26B1D"
+              placeholder="Add a follow-up or commitment…" addLabel="Add"
+              onChange={(arr)=>onPatch(conv.id, { followUps:arr, doneFollowUps:(conv.doneFollowUps||[]).filter(x=>arr.includes(x)) })}
+              onToggleDone={(t)=>onPatch(conv.id, { doneFollowUps: toggleIn(conv.doneFollowUps, t) })}
+            />
+          </Section>
           {conv.notes && (
             <Section label="Notes">
               <p style={{ fontSize:14, color:'#6b7280', fontStyle:'italic', margin:0 }}>{conv.notes}</p>
@@ -1034,7 +1064,7 @@ const ResumeCard = ({ person }) => {
 };
 
 /* ── Person Detail ────────────────────────────────────────────────────────── */
-const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv, onSchedule, onEditEvent, onDeleteEvent }) => {
+const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv, onPatchConv, onSchedule, onEditEvent, onDeleteEvent }) => {
   const sorted = [...(person.conversations||[])].sort((a,b)=>b.date.localeCompare(a.date));
   const partner = person.partnerId ? people.find(p=>p.id===person.partnerId) : null;
   const status = getStatus(person);
@@ -1232,7 +1262,8 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
             sorted.map(c => (
               <ConvCard key={c.id} conv={c}
                 onEdit={c => onEditConv(c)}
-                onDelete={id => onDeleteConv(person.id, id)} />
+                onDelete={id => onDeleteConv(person.id, id)}
+                onPatch={(convId, patch) => onPatchConv(person.id, convId, patch)} />
             ))
           )}
         </div>
@@ -1990,7 +2021,7 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 };
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
-const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, onOpenSettings, onLock, isMobile, onCloseDrawer, search, setSearch, sortBy, setSortBy, saveStatus }) => {
+const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, onOpenSettings, onLock, isMobile, onCloseDrawer, userEmail, search, setSearch, sortBy, setSortBy, saveStatus }) => {
   const [activeGroup, setActiveGroup] = useState(null);
   const [addMenu, setAddMenu] = useState(false);
   const addRef = useRef(null);
@@ -2185,20 +2216,28 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
         )}
       </div>
 
-      {/* Footer: settings + lock */}
-      <div className="safe-bottom" style={{ borderTop:'1px solid #EAEAE8', padding:'8px 10px', display:'flex', gap:6 }}>
-        <button onClick={onOpenSettings} title="Settings & reminders"
-          style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
-          onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
-          onMouseLeave={e=>e.currentTarget.style.background='white'}>
-          <Icon name="settings" size={15} color="#6b7280" />Settings
-        </button>
-        <button onClick={onLock} title="Lock the app"
-          style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px 14px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
-          onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
-          onMouseLeave={e=>e.currentTarget.style.background='white'}>
-          <Icon name="lock" size={15} color="#6b7280" />Lock
-        </button>
+      {/* Footer: signed-in email + settings + sign out */}
+      <div className="safe-bottom" style={{ borderTop:'1px solid #EAEAE8', padding:'8px 10px' }}>
+        {userEmail && (
+          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 6px 8px', fontSize:11, color:'#9ca3af', overflow:'hidden' }}>
+            <Icon name="user" size={12} color="#9ca3af" />
+            <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{userEmail}</span>
+          </div>
+        )}
+        <div style={{ display:'flex', gap:6 }}>
+          <button onClick={onOpenSettings} title="Settings & reminders"
+            style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
+            onMouseLeave={e=>e.currentTarget.style.background='white'}>
+            <Icon name="settings" size={15} color="#6b7280" />Settings
+          </button>
+          <button onClick={onLock} title="Sign out"
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px 14px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
+            onMouseLeave={e=>e.currentTarget.style.background='white'}>
+            <Icon name="logout" size={15} color="#6b7280" />Sign out
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -3035,7 +3074,7 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
 };
 
 /* ── App ──────────────────────────────────────────────────────────────────── */
-const App = ({ config, saveConfig, onLock }) => {
+const App = ({ config, saveConfig, onLock, userEmail }) => {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [showSettings, setShowSettings] = useState(false);
@@ -3058,10 +3097,18 @@ const App = ({ config, saveConfig, onLock }) => {
   const saveTimer  = useRef(null);
   const skipSave   = useRef(false); // true while applying a remote realtime update
   const peopleRef  = useRef(people); // always current for beforeunload
+  const tokenRef   = useRef(null);   // current auth access token for the keepalive flush
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'pending' | 'saving'
 
   // Keep peopleRef in sync
   useEffect(() => { peopleRef.current = people; }, [people]);
+
+  // Track the current access token (used by the tab-close keepalive flush under RLS)
+  useEffect(() => {
+    db.auth.getSession().then(({ data }) => { tokenRef.current = data.session?.access_token || null; });
+    const { data: sub } = db.auth.onAuthStateChange((_e, s) => { tokenRef.current = s?.access_token || null; });
+    return () => sub.subscription.unsubscribe();
+  }, []);
 
   // Initial load from Supabase
   const doLoad = () => {
@@ -3141,7 +3188,7 @@ const App = ({ config, saveConfig, onLock }) => {
         headers: {
           'Content-Type': 'application/json',
           'apikey': SUPABASE_KEY,
-          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Authorization': `Bearer ${tokenRef.current || SUPABASE_KEY}`,
           'Prefer': 'return=minimal',
         },
         body: JSON.stringify({ data: peopleRef.current }),
@@ -3294,6 +3341,15 @@ const App = ({ config, saveConfig, onLock }) => {
     ));
   };
 
+  // Patch fields of a single conversation in place (inline follow-up/question edits)
+  const patchConv = (personId, convId, patch) => {
+    setPeople(prev => prev.map(p =>
+      p.id === personId
+        ? { ...p, conversations: (p.conversations||[]).map(c => c.id===convId ? { ...c, ...patch } : c) }
+        : p
+    ));
+  };
+
   if (loadError) return <ErrorScreen error={loadError} onRetry={doLoad} />;
   if (!cloudReady) return <LoadingScreen />;
 
@@ -3313,6 +3369,7 @@ const App = ({ config, saveConfig, onLock }) => {
       onLock={onLock}
       isMobile={isMobile}
       onCloseDrawer={() => setSidebarOpen(false)}
+      userEmail={userEmail}
       search={search} setSearch={setSearch}
       sortBy={sortBy} setSortBy={setSortBy}
       saveStatus={saveStatus}
@@ -3330,6 +3387,7 @@ const App = ({ config, saveConfig, onLock }) => {
           onAddConv={() => { setEditingConv(null); setConvGroupMode(false); setShowConvModal(true); }}
           onEditConv={c => { setEditingConv(c); setShowConvModal(true); }}
           onDeleteConv={deleteConv}
+          onPatchConv={patchConv}
           onSchedule={() => openAddEvent({ lockedId: selected.id })}
           onEditEvent={ev => { setEditingEvent({ event:{...ev, _participantIds: ev.groupId ? people.filter(p=>(p.events||[]).some(e=>e.groupId===ev.groupId)).map(p=>p.id) : [selected.id] }, lockedId:null }); setEventDefaults({ date:ev.date, participantIds:[], lockedId:null }); setShowEventModal(true); }}
           onDeleteEvent={deleteEvent}
@@ -3370,7 +3428,7 @@ const App = ({ config, saveConfig, onLock }) => {
       </div>
 
       {showSettings && (
-        <SettingsModal config={config} onSave={saveConfig} onClose={() => setShowSettings(false)} />
+        <SettingsModal config={config} userEmail={userEmail} onSave={saveConfig} onClose={() => setShowSettings(false)} />
       )}
       {showPersonModal && (
         <PersonModal person={editingPerson} people={people} onSave={savePerson} onClose={() => { setShowPersonModal(false); setEditingPerson(null); }} />
@@ -3424,26 +3482,41 @@ const MobileTopBar = ({ onMenu }) => (
   </div>
 );
 
-/* ── Lock screen (shared passcode gate) ───────────────────────────────────── */
-const LockScreen = ({ needsSetup, onVerify, onCreate }) => {
-  const [p1, setP1] = useState('');
-  const [p2, setP2] = useState('');
-  const [remember, setRemember] = useState(true);
+/* ── Auth screen (Supabase email/password) ────────────────────────────────── */
+const AuthScreen = () => {
+  const [mode, setMode] = useState('signin'); // 'signin' | 'signup' | 'reset'
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
   const [err, setErr] = useState('');
+  const [msg, setMsg] = useState('');
   const [busy, setBusy] = useState(false);
+
   const go = async () => {
-    setErr('');
-    if (needsSetup) {
-      if (p1.length < 4) return setErr('Use at least 4 characters.');
-      if (p1 !== p2) return setErr('Passcodes don’t match.');
-      setBusy(true); await onCreate(p1, remember); setBusy(false);
-    } else {
-      if (!p1) return;
-      setBusy(true); const ok = await onVerify(p1, remember); setBusy(false);
-      if (!ok) { setErr('Incorrect passcode.'); setP1(''); }
-    }
+    setErr(''); setMsg('');
+    if (!email) return setErr('Enter your email.');
+    setBusy(true);
+    try {
+      if (mode === 'reset') {
+        const { error } = await db.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+        if (error) setErr(error.message); else setMsg('Password reset link sent — check your email.');
+      } else if (mode === 'signup') {
+        if (pw.length < 6) { setErr('Password must be at least 6 characters.'); setBusy(false); return; }
+        const { data, error } = await db.auth.signUp({ email, password: pw });
+        if (error) setErr(error.message);
+        else if (!data.session) setMsg('Account created. Check your email to confirm, then sign in.');
+        // If confirmations are off, onAuthStateChange signs you in automatically.
+      } else {
+        const { error } = await db.auth.signInWithPassword({ email, password: pw });
+        if (error) setErr(error.message);
+        // success → Root's onAuthStateChange swaps to the app
+      }
+    } catch (e) { setErr(String(e?.message || e)); }
+    setBusy(false);
   };
+
   const inp = { width:'100%', padding:'12px 14px', border:`1px solid ${T.borderStrong}`, borderRadius:10, fontSize:16, color:T.text, background:'white', outline:'none' };
+  const title = mode === 'signup' ? 'Create your account' : mode === 'reset' ? 'Reset your password' : 'Sign in to Resume';
+  const cta = mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Send reset link' : 'Sign in';
   return (
     <div className="safe-top safe-bottom" style={{ minHeight:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'linear-gradient(160deg,#FDF1E7,#F7F6F3)' }}>
       <div className="modal-box" style={{ width:'100%', maxWidth:380, background:T.surface, borderRadius:18, padding:'28px 24px', boxShadow:'0 20px 60px rgba(0,0,0,0.12)', border:`1px solid ${T.border}` }}>
@@ -3452,31 +3525,44 @@ const LockScreen = ({ needsSetup, onVerify, onCreate }) => {
             <Icon name="lock" size={24} color="white" />
           </div>
           <h1 style={{ fontSize:22, fontWeight:900, color:T.accentStrong, letterSpacing:'-0.5px' }}>▶ Resume</h1>
-          <p style={{ fontSize:13, color:T.textSoft, marginTop:6 }}>
-            {needsSetup ? 'Set a passcode to protect your contacts. Anyone you share it with can sign in.' : 'Enter your passcode to continue.'}
-          </p>
+          <p style={{ fontSize:13, color:T.textSoft, marginTop:6 }}>{title}</p>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          <input type="password" value={p1} onChange={e=>setP1(e.target.value)} autoFocus
-            onKeyDown={e=>{ if(e.key==='Enter' && !needsSetup) go(); }}
-            placeholder={needsSetup ? 'New passcode' : 'Passcode'} style={inp} />
-          {needsSetup && (
-            <input type="password" value={p2} onChange={e=>setP2(e.target.value)}
-              onKeyDown={e=>{ if(e.key==='Enter') go(); }}
-              placeholder="Confirm passcode" style={inp} />
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus
+            autoComplete="email" placeholder="Email" style={inp}
+            onKeyDown={e=>{ if(e.key==='Enter' && mode==='reset') go(); }} />
+          {mode !== 'reset' && (
+            <input type="password" value={pw} onChange={e=>setPw(e.target.value)}
+              autoComplete={mode==='signup'?'new-password':'current-password'}
+              onKeyDown={e=>{ if(e.key==='Enter') go(); }} placeholder="Password" style={inp} />
           )}
           {err && <p style={{ fontSize:12, color:'#dc2626', textAlign:'center' }}>{err}</p>}
-          <label style={{ display:'flex', alignItems:'center', gap:8, fontSize:13, color:T.textSoft, cursor:'pointer', userSelect:'none' }}>
-            <input type="checkbox" checked={remember} onChange={e=>setRemember(e.target.checked)} style={{ width:16, height:16, accentColor:T.accent }} />
-            Keep me signed in on this device
-          </label>
+          {msg && <p style={{ fontSize:12, color:'#15803d', textAlign:'center' }}>{msg}</p>}
           <button onClick={go} disabled={busy}
             style={{ marginTop:4, padding:'12px', borderRadius:10, border:'none', background:T.accent, color:'white', fontSize:15, fontWeight:700, cursor: busy?'default':'pointer', opacity: busy?0.7:1 }}>
-            {busy ? 'Please wait…' : needsSetup ? 'Set passcode & continue' : 'Unlock'}
+            {busy ? 'Please wait…' : cta}
           </button>
         </div>
+        <div style={{ display:'flex', justifyContent:'space-between', marginTop:14, fontSize:12 }}>
+          <button onClick={()=>{ setMode(mode==='signup'?'signin':'signup'); setErr(''); setMsg(''); }}
+            style={{ background:'none', border:'none', cursor:'pointer', color:T.accentDeep, fontWeight:600 }}>
+            {mode==='signup' ? 'Have an account? Sign in' : 'Create an account'}
+          </button>
+          {mode!=='reset' && (
+            <button onClick={()=>{ setMode('reset'); setErr(''); setMsg(''); }}
+              style={{ background:'none', border:'none', cursor:'pointer', color:T.faint }}>
+              Forgot password?
+            </button>
+          )}
+          {mode==='reset' && (
+            <button onClick={()=>{ setMode('signin'); setErr(''); setMsg(''); }}
+              style={{ background:'none', border:'none', cursor:'pointer', color:T.faint }}>
+              Back to sign in
+            </button>
+          )}
+        </div>
         <p style={{ fontSize:10.5, color:T.faint, textAlign:'center', marginTop:16, lineHeight:1.5 }}>
-          This is a lightweight gate to keep casual visitors out. For stronger security, enable Supabase Auth + row-level security (see README).
+          Secured by Supabase Auth. Your contacts sync across phone and computer. First-time setup steps are in AUTH_SETUP.md.
         </p>
       </div>
     </div>
@@ -3497,7 +3583,7 @@ const SettingsRow = ({ label, on, onChange }) => (
     <Toggle on={on} onChange={onChange} />
   </div>
 );
-const SettingsModal = ({ config, onSave, onClose }) => {
+const SettingsModal = ({ config, userEmail, onSave, onClose }) => {
   const [notify, setNotify] = useState(() => ({ ...DEFAULT_NOTIFY, ...(config?.notify||{}),
     channels:{ ...DEFAULT_NOTIFY.channels, ...(config?.notify?.channels||{}) },
     types:{ ...DEFAULT_NOTIFY.types, ...(config?.notify?.types||{}) } }));
@@ -3510,14 +3596,16 @@ const SettingsModal = ({ config, onSave, onClose }) => {
 
   const save = async () => {
     setPassMsg('');
-    const next = { ...config, notify };
     if (np1 || np2) {
-      if (np1.length < 4) { setPassMsg('New passcode must be at least 4 characters.'); return; }
-      if (np1 !== np2) { setPassMsg('New passcodes don’t match.'); return; }
-      next.passHash = await hashPass(np1);
+      if (np1.length < 6) { setPassMsg('Password must be at least 6 characters.'); return; }
+      if (np1 !== np2) { setPassMsg('Passwords don’t match.'); return; }
     }
     setSaving(true);
-    await onSave(next);
+    if (np1) {
+      const { error } = await db.auth.updateUser({ password: np1 });
+      if (error) { setSaving(false); setPassMsg(error.message); return; }
+    }
+    await onSave({ ...config, notify });
     setSaving(false);
     onClose();
   };
@@ -3579,16 +3667,18 @@ const SettingsModal = ({ config, onSave, onClose }) => {
 
           {/* Passcode */}
           <div style={{ borderTop:`1px solid ${T.border}`, paddingTop:16 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
               <Icon name="lock" size={16} color={T.textSoft} />
-              <span style={{ fontSize:15, fontWeight:700, color:T.text }}>Change passcode</span>
+              <span style={{ fontSize:15, fontWeight:700, color:T.text }}>Account</span>
             </div>
+            {userEmail && <p style={{ fontSize:12, color:T.textSoft, marginBottom:10 }}>Signed in as <b>{userEmail}</b></p>}
+            <Label>Change password</Label>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }} className="r-cols2">
-              <Input type="password" value={np1} onChange={e=>setNp1(e.target.value)} placeholder="New passcode" />
-              <Input type="password" value={np2} onChange={e=>setNp2(e.target.value)} placeholder="Confirm" />
+              <Input type="password" autoComplete="new-password" value={np1} onChange={e=>setNp1(e.target.value)} placeholder="New password" />
+              <Input type="password" autoComplete="new-password" value={np2} onChange={e=>setNp2(e.target.value)} placeholder="Confirm" />
             </div>
             {passMsg && <p style={{ fontSize:12, color:'#dc2626', marginTop:8 }}>{passMsg}</p>}
-            <p style={{ fontSize:11, color:T.faint, marginTop:6 }}>Leave blank to keep your current passcode.</p>
+            <p style={{ fontSize:11, color:T.faint, marginTop:6 }}>Leave blank to keep your current password. Minimum 6 characters.</p>
           </div>
         </div>
 
@@ -3601,48 +3691,32 @@ const SettingsModal = ({ config, onSave, onClose }) => {
   );
 };
 
-/* ── Root: config load + passcode gate, then the app ──────────────────────── */
+/* ── Root: Supabase Auth gate, then load settings + app ───────────────────── */
 const Root = () => {
+  const [session, setSession] = useState(undefined); // undefined=loading, null=signed out, obj=signed in
   const [config, setConfig] = useState(null);
-  const [ready, setReady] = useState(false);
-  const [cfgError, setCfgError] = useState(null);
-  const [unlocked, setUnlocked] = useState(() =>
-    sessionStorage.getItem('resume_unlocked') === '1' || localStorage.getItem('resume_unlocked_persist') === '1');
+  const [configReady, setConfigReady] = useState(false);
 
-  const fetchConfig = () => {
-    setCfgError(null); setReady(false);
+  useEffect(() => {
+    db.auth.getSession().then(({ data }) => setSession(data.session || null)).catch(() => setSession(null));
+    const { data: sub } = db.auth.onAuthStateChange((_event, s) => setSession(s));
+    return () => sub.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!session) { setConfigReady(false); return; }
     loadConfig()
-      .then(c => { setConfig(c || { passHash:null, notify:{ ...DEFAULT_NOTIFY } }); setReady(true); })
-      .catch(e => { setCfgError(e.message || 'Could not load settings'); setReady(true); });
-  };
-  useEffect(() => { fetchConfig(); }, []);
+      .then(c => { setConfig(c || { notify: { ...DEFAULT_NOTIFY } }); setConfigReady(true); })
+      .catch(() => { setConfig({ notify: { ...DEFAULT_NOTIFY } }); setConfigReady(true); });
+  }, [session]);
 
-  const markUnlocked = (remember) => {
-    sessionStorage.setItem('resume_unlocked', '1');
-    if (remember) localStorage.setItem('resume_unlocked_persist', '1');
-    setUnlocked(true);
-  };
-  const onCreate = async (pass, remember) => {
-    const passHash = await hashPass(pass);
-    const next = { ...(config||{}), passHash, notify: config?.notify || { ...DEFAULT_NOTIFY } };
-    setConfig(next); await persistConfig(next); markUnlocked(remember);
-  };
-  const onVerify = async (pass, remember) => {
-    const h = await hashPass(pass);
-    if (config?.passHash && h === config.passHash) { markUnlocked(remember); return true; }
-    return false;
-  };
-  const onLock = () => {
-    sessionStorage.removeItem('resume_unlocked');
-    localStorage.removeItem('resume_unlocked_persist');
-    setUnlocked(false);
-  };
   const saveConfig = async (next) => { setConfig(next); await persistConfig(next); };
+  const onLock = () => { db.auth.signOut(); };
 
-  if (cfgError) return <ErrorScreen error={cfgError} onRetry={fetchConfig} />;
-  if (!ready) return <LoadingScreen />;
-  if (!unlocked) return <LockScreen needsSetup={!config?.passHash} onCreate={onCreate} onVerify={onVerify} />;
-  return <App config={config} saveConfig={saveConfig} onLock={onLock} />;
+  if (session === undefined) return <LoadingScreen />;
+  if (!session) return <AuthScreen />;
+  if (!configReady) return <LoadingScreen />;
+  return <App config={config} saveConfig={saveConfig} onLock={onLock} userEmail={session.user?.email} />;
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
