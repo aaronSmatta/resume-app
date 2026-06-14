@@ -35,34 +35,59 @@ Two options:
 > Want to let your spouse use it too? Add them as another user the same way —
 > everyone signs in to the same shared data.
 
-## 3. Lock the database to signed-in users (RLS)
+## 3. Lock the database to each account's own rows (RLS)
 
-This is the step that actually stops anyone-with-the-URL from reading your data.
+The app now stores **one row per account**: your contacts live in a row whose
+`id` is your user id, and your settings in `id = "<your user id>::config"`. The
+policies below let each signed-in user read/write only their own rows.
+
 Dashboard → **SQL Editor**, paste and run:
 
 ```sql
 alter table public.resume_data enable row level security;
 
--- Remove any older permissive policies if present
+-- Remove older policies if present
 drop policy if exists "public read"  on public.resume_data;
 drop policy if exists "public write" on public.resume_data;
+drop policy if exists "authenticated read"   on public.resume_data;
+drop policy if exists "authenticated insert" on public.resume_data;
+drop policy if exists "authenticated update" on public.resume_data;
 
--- Only signed-in users can read/write
-create policy "authenticated read"
-  on public.resume_data for select
-  to authenticated using (true);
+-- Each user can read/write only their own data + config rows
+create policy "own rows read" on public.resume_data for select to authenticated
+  using ( id = auth.uid()::text or id = auth.uid()::text || '::config' );
 
-create policy "authenticated insert"
-  on public.resume_data for insert
-  to authenticated with check (true);
+create policy "own rows insert" on public.resume_data for insert to authenticated
+  with check ( id = auth.uid()::text or id = auth.uid()::text || '::config' );
 
-create policy "authenticated update"
-  on public.resume_data for update
-  to authenticated using (true) with check (true);
+create policy "own rows update" on public.resume_data for update to authenticated
+  using ( id = auth.uid()::text or id = auth.uid()::text || '::config' )
+  with check ( id = auth.uid()::text or id = auth.uid()::text || '::config' );
 ```
 
-That's it. With RLS on and these policies, the public anon key can no longer read
-the table — requests must carry a valid signed-in session, which the app attaches
+### Move your existing data into your account (one-time)
+
+Your current data is in the old shared row `id = 'main'`. Run this **once** so the
+app can copy it into your account on next load:
+
+```sql
+-- TRANSITIONAL: let signed-in users read the legacy 'main' row so the app can
+-- migrate it into your per-account row.
+create policy "legacy migrate read" on public.resume_data for select to authenticated
+  using ( id = 'main' );
+```
+
+Then open the app on the device that has your data (your computer), sign in, and
+wait a few seconds — it detects the empty account row, copies `main` into it, and
+saves. Open the phone next and it'll pull the same data. Once you've confirmed
+both devices show everything, remove the transitional policy:
+
+```sql
+drop policy if exists "legacy migrate read" on public.resume_data;
+```
+
+With RLS on and these policies, the public anon key can no longer read the table —
+requests must carry a valid signed-in session, which the app attaches
 automatically after you log in.
 
 ## 4. (Optional) keep realtime sync working
