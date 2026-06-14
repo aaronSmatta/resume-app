@@ -891,7 +891,26 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
 /* Inline-editable checklist used inside a conversation card (follow-ups / open
    questions). Items can be added, removed, and checked off — persisted by the
    parent via onChange / onToggleDone. */
-const EditableConvList = ({ items=[], done=[], marker, color, onChange, onToggleDone, placeholder, addLabel='Add item' }) => {
+/* Small Me / Them / Auto owner pill for a follow-up. owner is 'mine' | 'theirs'
+   | undefined(auto). autoMine is what the heuristic would decide. */
+const OwnerPill = ({ owner, autoMine, onCycle }) => {
+  const isMine = owner ? owner === 'mine' : autoMine;
+  const explicit = owner === 'mine' || owner === 'theirs';
+  const label = isMine ? 'Me' : 'Them';
+  const bg = isMine ? T.accentSoft : '#EEF1F4';
+  const fg = isMine ? T.accentDeep : '#475569';
+  return (
+    <button onClick={onCycle}
+      title={explicit ? `Marked as ${isMine?'your task':'their task'} — tap to change (Auto next)` : `Auto: counts as ${isMine?'your task':'their task'} — tap to set`}
+      style={{ flexShrink:0, display:'inline-flex', alignItems:'center', gap:4, padding:'1px 8px', borderRadius:99, cursor:'pointer',
+        fontSize:11, fontWeight:700, color:fg, background:bg,
+        border: explicit ? `1px solid ${isMine?T.accentBorder:'#CBD5E1'}` : '1px dashed #CBD5E1', opacity: explicit ? 1 : 0.75 }}>
+      <Icon name="user" size={10} color={fg} />{label}{!explicit && <span style={{ fontWeight:500, opacity:0.7 }}>·auto</span>}
+    </button>
+  );
+};
+
+const EditableConvList = ({ items=[], done=[], marker, color, onChange, onToggleDone, placeholder, addLabel='Add item', ownerOf, autoMineOf, onCycleOwner }) => {
   const [val, setVal] = useState('');
   const doneSet = new Set(done || []);
   const add = () => { const t = val.trim(); if (!t) return; onChange([...(items||[]), t]); setVal(''); };
@@ -909,6 +928,9 @@ const EditableConvList = ({ items=[], done=[], marker, color, onChange, onToggle
               {isDone && <Icon name="check" size={11} color="white" />}
             </button>
             <span style={{ flex:1, fontSize:14, lineHeight:1.45, color: isDone ? '#9ca3af' : '#374151', textDecoration: isDone ? 'line-through' : 'none' }}>{it}</span>
+            {onCycleOwner && (
+              <OwnerPill owner={ownerOf(it)} autoMine={autoMineOf(it)} onCycle={()=>onCycleOwner(it)} />
+            )}
             <button onClick={()=>remove(i)} title="Remove"
               style={{ flexShrink:0, background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'0 2px', marginTop:1 }}
               onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
@@ -1000,9 +1022,19 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
             <EditableConvList
               items={conv.followUps} done={conv.doneFollowUps} marker="→" color="#F26B1D"
               placeholder="Add a follow-up or commitment…" addLabel="Add"
-              onChange={(arr)=>onPatch(conv.id, { followUps:arr, doneFollowUps:(conv.doneFollowUps||[]).filter(x=>arr.includes(x)) })}
+              onChange={(arr)=>{
+                const keep = new Set(arr);
+                const owner = Object.fromEntries(Object.entries(conv.followUpOwner||{}).filter(([k])=>keep.has(k)));
+                onPatch(conv.id, { followUps:arr, doneFollowUps:(conv.doneFollowUps||[]).filter(x=>keep.has(x)), followUpOwner:owner });
+              }}
               onToggleDone={(t)=>onPatch(conv.id, { doneFollowUps: toggleIn(conv.doneFollowUps, t) })}
+              ownerOf={(t)=> conv.followUpOwner?.[t]}
+              autoMineOf={(t)=> isMyCommitment(t)}
+              onCycleOwner={(t)=>onPatch(conv.id, { followUpOwner: cycleOwner(conv.followUpOwner, t) })}
             />
+            <p style={{ fontSize:11, color:T.faint, marginTop:6 }}>
+              Tap <b>Me / Them</b> to set who owns a task. Only “Me” tasks appear on your dashboard; “·auto” means it’s decided from the wording.
+            </p>
           </Section>
           {conv.notes && (
             <Section label="Notes">
@@ -2697,16 +2729,30 @@ const isMyCommitment = (t) => {
   if (TASK_VERB_RX.test(s)) return true;         // imperative self-task ("Send Aaron the deck")
   return false;
 };
+// Resolve who owns a follow-up: explicit flag wins, else fall back to the heuristic.
+const ownsFollowUp = (conv, text) => {
+  const explicit = conv?.followUpOwner?.[text];
+  return explicit ? explicit === 'mine' : isMyCommitment(text);
+};
+// Cycle a follow-up's owner: auto → mine → theirs → auto. Returns a new map.
+const cycleOwner = (map, text) => {
+  const next = { ...(map || {}) };
+  const cur = next[text];
+  if (cur === undefined) next[text] = 'mine';
+  else if (cur === 'mine') next[text] = 'theirs';
+  else delete next[text];
+  return next;
+};
 
 /* ── Commitments ("homework") — open follow-ups across all conversations ───── */
-const CommitmentsSection = ({ people, onSelect, onToggle }) => {
+const CommitmentsSection = ({ people, onSelect, onToggle, onSetOwner }) => {
   const [showDone, setShowDone] = useState(false);
   const { open, done } = useMemo(() => {
     const open = [], done = [];
     people.forEach(p => (p.conversations||[]).forEach(c => {
       const doneSet = new Set(c.doneFollowUps||[]);
       (c.followUps||[]).forEach(text => {
-        if (!isMyCommitment(text)) return;       // only things *I* said I'd do
+        if (!ownsFollowUp(c, text)) return;      // explicit owner wins, else heuristic
         const item = { person:p, convId:c.id, date:c.date, text };
         (doneSet.has(text) ? done : open).push(item);
       });
@@ -2733,6 +2779,15 @@ const CommitmentsSection = ({ people, onSelect, onToggle }) => {
           <span style={{ fontSize:11, color:T.faint }}>· {fmt(it.date)}</span>
         </button>
       </div>
+      {!isDone && (
+        <button onClick={()=>onSetOwner(it.person.id, it.convId, it.text, 'theirs')}
+          title="Not my task — assign to them and remove from this list"
+          style={{ flexShrink:0, alignSelf:'center', fontSize:11, fontWeight:600, color:T.faint, background:'none', border:`1px solid ${T.border}`, borderRadius:99, padding:'2px 8px', cursor:'pointer', whiteSpace:'nowrap' }}
+          onMouseEnter={e=>{ e.currentTarget.style.color='#475569'; e.currentTarget.style.borderColor='#CBD5E1'; }}
+          onMouseLeave={e=>{ e.currentTarget.style.color=T.faint; e.currentTarget.style.borderColor=T.border; }}>
+          Not mine
+        </button>
+      )}
     </div>
   );
 
@@ -2776,7 +2831,7 @@ const CommitmentsSection = ({ people, onSelect, onToggle }) => {
 };
 
 /* ── Dashboard ────────────────────────────────────────────────────────────── */
-const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onToggleCommitment, onForgo }) => {
+const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onToggleCommitment, onSetCommitmentOwner, onForgo }) => {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
@@ -2884,7 +2939,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
         </div>
 
         {/* Commitments / homework */}
-        <CommitmentsSection people={people} onSelect={onSelectPerson} onToggle={onToggleCommitment} />
+        <CommitmentsSection people={people} onSelect={onSelectPerson} onToggle={onToggleCommitment} onSetOwner={onSetCommitmentOwner} />
 
         {/* Calendar */}
         <CalendarSection people={people} onSelectPerson={onSelectPerson} onAddEvent={onAddEvent} />
@@ -3289,6 +3344,19 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
     }));
   };
 
+  // Explicitly set who owns a follow-up ('mine' | 'theirs' | undefined to clear)
+  const setFollowUpOwner = (personId, convId, text, owner) => {
+    setPeople(prev => prev.map(p => {
+      if (p.id !== personId) return p;
+      return { ...p, conversations: (p.conversations||[]).map(c => {
+        if (c.id !== convId) return c;
+        const map = { ...(c.followUpOwner||{}) };
+        if (owner) map[text] = owner; else delete map[text];
+        return { ...c, followUpOwner: map };
+      }) };
+    }));
+  };
+
   const saveConv = (conv, participantIds) => {
     if (editingConv) {
       // Editing → update in place for the currently selected person only
@@ -3449,6 +3517,7 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
           onLogGroup={() => { setEditingConv(null); setConvGroupMode(true); setSelectedId(null); setShowConvModal(true); }}
           onAddEvent={(date) => openAddEvent({ date })}
           onToggleCommitment={toggleFollowUpDone}
+          onSetCommitmentOwner={setFollowUpOwner}
           onForgo={forgoPerson}
         />
       );
