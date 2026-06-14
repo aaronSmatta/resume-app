@@ -16,26 +16,43 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
+    /* Light theme (default). Dark overrides below. Components read these vars
+       directly or via the JS theme token object T. */
     :root {
-      --accent: #F26B1D; --accent-strong: #DC5A1A; --accent-soft: #FDF1E7;
-      --bg: #F7F6F3; --surface: #FFFFFF; --border: #EDEDEC; --text: #37352F;
+      --accent:#F26B1D; --accent-strong:#DC5A1A; --accent-deep:#B7430E;
+      --accent-soft:#FDF1E7; --accent-soft-2:#FBE2CE; --accent-border:#F6CBA3;
+      --bg:#F7F6F3; --surface:#FFFFFF; --surface-2:#FAFAFA;
+      --border:#EDEDEC; --border-strong:#E3E2DF;
+      --text-strong:#111827; --text:#374151; --text-soft:#6b7280; --faint:#9ca3af; --faintest:#d1d5db;
+      --scroll-thumb:#DDDCD8; --scroll-thumb-hover:#C9C8C3; --select-bg:#FBE2CE;
+      color-scheme: light;
+    }
+    html[data-theme="dark"] {
+      --accent:#F8843C; --accent-strong:#F8843C; --accent-deep:#FBD9BE;
+      --accent-soft:#3A2A1C; --accent-soft-2:#48331F; --accent-border:#5C4226;
+      --bg:#1A1A1A; --surface:#242424; --surface-2:#2B2B2B;
+      --border:#363636; --border-strong:#474747;
+      --text-strong:#ECECEC; --text:#D6D6D6; --text-soft:#A3A3A3; --faint:#7E7E7E; --faintest:#565656;
+      --scroll-thumb:#3A3A3A; --scroll-thumb-hover:#4A4A4A; --select-bg:#5C4226;
+      color-scheme: dark;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
     body {
       font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, Helvetica, Arial, sans-serif;
       background: var(--bg); color: var(--text);
+      transition: background 0.2s ease, color 0.2s ease;
     }
     ::-webkit-scrollbar { width: 9px; height: 9px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #DDDCD8; border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
-    ::-webkit-scrollbar-thumb:hover { background: #C9C8C3; background-clip: padding-box; }
-    ::selection { background: #FBE2CE; }
+    ::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 10px; border: 2px solid transparent; background-clip: padding-box; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: padding-box; }
+    ::selection { background: var(--select-bg); }
     input, textarea, select { font-family: inherit; }
     input:focus, textarea:focus, select:focus { outline: none; }
     textarea { resize: vertical; }
     /* Subtle orange focus ring for a cohesive modern feel */
-    input:focus, textarea:focus { border-color: #F6CBA3 !important; box-shadow: 0 0 0 3px rgba(242,107,29,0.12); }
+    input:focus, textarea:focus { border-color: var(--accent-border) !important; box-shadow: 0 0 0 3px rgba(242,107,29,0.18); }
     .modal-bg { animation: fadeBg 0.15s ease; backdrop-filter: blur(2px); }
     .modal-box { animation: slideUp 0.18s ease; }
     @keyframes fadeBg { from { opacity: 0; } to { opacity: 1; } }
@@ -92,18 +109,18 @@ const daysSince = (ds) => {
   return Math.floor((Date.now() - new Date(ds + 'T12:00:00')) / 86400000);
 };
 const initials = (name = '') => name.split(' ').map(p => p[0]).join('').toUpperCase().slice(0,2) || '?';
-const COLORS = ['#F26B1D','#E8590C','#0EA5A0','#EC4899','#F59E0B','#3B82F6','#8B5CF6','#14B8A6'];
+const COLORS = ['var(--accent)','#E8590C','#0EA5A0','#EC4899','#F59E0B','#3B82F6','#8B5CF6','#14B8A6'];
 /* ── Theme tokens (orange primary, Notion-inspired) — uppercase hex so the
       legacy-color recolor pass leaves them untouched ──────────────────────── */
 const T = {
-  accent:'#F26B1D', accentStrong:'#DC5A1A', accentDeep:'#B7430E',
-  accentSoft:'#FDF1E7', accentSoft2:'#FBE2CE', accentBorder:'#F6CBA3',
+  accent:'var(--accent)', accentStrong:'var(--accent-strong)', accentDeep:'var(--accent-deep)',
+  accentSoft:'var(--accent-soft)', accentSoft2:'var(--accent-soft-2)', accentBorder:'var(--accent-border)',
   teal:'#0EA5A0', tealSoft:'#E6F6F4',
   rose:'#EC4899', roseSoft:'#FCE7F3',
   blue:'#3B82F6', green:'#10B981', amber:'#F59E0B', red:'#EF4444',
-  bg:'#F7F6F3', surface:'#FFFFFF',
-  border:'#EDEDEC', borderStrong:'#E3E2DF',
-  text:'#37352F', textSoft:'#6B6B68', faint:'#9B9A97',
+  bg:'var(--bg)', surface:'var(--surface)',
+  border:'var(--border)', borderStrong:'var(--border-strong)',
+  text:'var(--text-strong)', textSoft:'var(--text-soft)', faint:'var(--faint)',
 };
 const avatarColor = (name='') => COLORS[name.charCodeAt(0) % COLORS.length] || COLORS[0];
 const lastConvDate = (p) => p.conversations?.length
@@ -118,7 +135,7 @@ const getStatus = (p) => {
   if (d > t * 0.75) return 'soon';
   return 'ok';
 };
-const STATUS_COLOR = { off:'#d1d5db', new:'#60a5fa', ok:'#34d399', soon:'#fbbf24', overdue:'#f87171' };
+const STATUS_COLOR = { off:'var(--faintest)', new:'#60a5fa', ok:'#34d399', soon:'#fbbf24', overdue:'#f87171' };
 const STATUS_LABEL = { off:'', new:'New contact', ok:'Up to date', soon:'Follow up soon', overdue:'Overdue — reach out!' };
 
 const daysUntilBirthday = (birthdayStr) => {
@@ -370,7 +387,20 @@ const IC = {
   mail: 'M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 6l-10 7L2 6',
   phone: 'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z',
   logout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
+  sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10zM12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42',
+  moon: 'M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z',
 };
+
+/* ── Theme (light / dark) ─────────────────────────────────────────────────── */
+const getInitialTheme = () => {
+  try {
+    const saved = localStorage.getItem('resume_theme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch(e) {}
+  return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+};
+const applyTheme = (t) => { try { document.documentElement.dataset.theme = t; } catch(e) {} };
+applyTheme(getInitialTheme()); // apply ASAP so the loading/auth screens are themed too
 
 const Svg = ({ d, size=16, color='currentColor', style }) => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={style}>
@@ -386,23 +416,23 @@ const Icon = ({ name, size=16, color='currentColor', style }) => (
 
 /* ── Shared UI ────────────────────────────────────────────────────────────── */
 const Label = ({ children }) => (
-  <div style={{ fontSize:11, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>{children}</div>
+  <div style={{ fontSize:11, fontWeight:700, color:'var(--faint)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:6 }}>{children}</div>
 );
 
 const Input = ({ style, ...props }) => (
-  <input style={{ width:'100%', padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', background:'white', ...style }} {...props} />
+  <input style={{ width:'100%', padding:'9px 12px', border:'1px solid var(--border-strong)', borderRadius:8, fontSize:14, color:'var(--text-strong)', background:'var(--surface)', ...style }} {...props} />
 );
 
 const Textarea = ({ style, ...props }) => (
-  <textarea style={{ width:'100%', padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', lineHeight:'1.55', ...style }} {...props} />
+  <textarea style={{ width:'100%', padding:'9px 12px', border:'1px solid var(--border-strong)', borderRadius:8, fontSize:14, color:'var(--text-strong)', lineHeight:'1.55', ...style }} {...props} />
 );
 
 const Btn = ({ variant='primary', style, children, ...props }) => {
   const base = { padding:'9px 18px', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer', display:'inline-flex', alignItems:'center', gap:6, border:'none', transition:'opacity 0.1s' };
   const styles = {
-    primary: { background:'#F26B1D', color:'white' },
-    secondary: { background:'white', color:'#374151', border:'1px solid #E3E2DF' },
-    ghost: { background:'transparent', color:'#6b7280', border:'none', padding:'6px 10px', fontWeight:500 },
+    primary: { background:'var(--accent)', color:'white' },
+    secondary: { background:'var(--surface)', color:'var(--text)', border:'1px solid var(--border-strong)' },
+    ghost: { background:'transparent', color:'var(--text-soft)', border:'none', padding:'6px 10px', fontWeight:500 },
   };
   return <button style={{ ...base, ...styles[variant], ...style }} {...props}>{children}</button>;
 };
@@ -412,18 +442,18 @@ const TagInput = ({ tags=[], onChange, placeholder='Add, press Enter...' }) => {
   const [val, setVal] = useState('');
   const add = () => { const t = val.trim(); if (t && !tags.includes(t)) onChange([...tags, t]); setVal(''); };
   return (
-    <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', padding:'7px 10px', border:'1px solid #E3E2DF', borderRadius:8, background:'white', minHeight:40 }}>
+    <div style={{ display:'flex', flexWrap:'wrap', gap:6, alignItems:'center', padding:'7px 10px', border:'1px solid var(--border-strong)', borderRadius:8, background:'var(--surface)', minHeight:40 }}>
       {tags.map(t => (
-        <span key={t} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', background:'#FDF1E7', color:'#DC5A1A', borderRadius:99, fontSize:13 }}>
+        <span key={t} style={{ display:'inline-flex', alignItems:'center', gap:3, padding:'2px 8px', background:'var(--accent-soft)', color:'var(--accent-strong)', borderRadius:99, fontSize:13 }}>
           {t}
-          <button onClick={() => onChange(tags.filter(x=>x!==t))} style={{ background:'none', border:'none', cursor:'pointer', color:'#F26B1D', lineHeight:1, fontSize:16, padding:0, marginLeft:1 }}>×</button>
+          <button onClick={() => onChange(tags.filter(x=>x!==t))} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--accent)', lineHeight:1, fontSize:16, padding:0, marginLeft:1 }}>×</button>
         </span>
       ))}
       <input value={val} onChange={e=>setVal(e.target.value)}
         onKeyDown={e=>{ if(e.key==='Enter'||e.key===','){e.preventDefault();add();} }}
         onBlur={add}
         placeholder={tags.length ? '' : placeholder}
-        style={{ border:'none', outline:'none', flex:1, minWidth:80, fontSize:14, background:'transparent', color:'#374151' }} />
+        style={{ border:'none', outline:'none', flex:1, minWidth:80, fontSize:14, background:'transparent', color:'var(--text)' }} />
     </div>
   );
 };
@@ -441,7 +471,7 @@ const KidsInput = ({ kids=[], onChange }) => {
     onChange([...kids, kid]); setName(''); setAge('');
   };
   const remove = (i) => onChange(kids.filter((_,j)=>j!==i));
-  const inp = { padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', background:'white', outline:'none' };
+  const inp = { padding:'9px 12px', border:'1px solid var(--border-strong)', borderRadius:8, fontSize:14, color:'var(--text-strong)', background:'var(--surface)', outline:'none' };
   return (
     <div>
       {kids.length > 0 && (
@@ -458,11 +488,11 @@ const KidsInput = ({ kids=[], onChange }) => {
         <input value={name} onChange={e=>setName(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } }}
           placeholder="Kid's name" style={{ ...inp, flex:1, minWidth:0 }}
-          onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'} onBlur={e=>e.currentTarget.style.borderColor='#E3E2DF'} />
+          onFocus={e=>e.currentTarget.style.borderColor='var(--accent-border)'} onBlur={e=>e.currentTarget.style.borderColor='var(--border-strong)'} />
         <input value={age} onChange={e=>setAge(e.target.value.replace(/[^\d]/g,''))} type="text" inputMode="numeric"
           onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } }}
           placeholder="Age" style={{ ...inp, width:72, textAlign:'center' }}
-          onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'} onBlur={e=>e.currentTarget.style.borderColor='#E3E2DF'} />
+          onFocus={e=>e.currentTarget.style.borderColor='var(--accent-border)'} onBlur={e=>e.currentTarget.style.borderColor='var(--border-strong)'} />
         <button onClick={add} style={{ padding:'0 16px', borderRadius:8, border:'none', background:T.accentSoft, color:T.accentDeep, fontWeight:600, fontSize:13, cursor:'pointer', whiteSpace:'nowrap' }}>Add</button>
       </div>
       <p style={{ fontSize:11, color:T.faint, marginTop:6 }}>Age auto-advances each year so it stays roughly current.</p>
@@ -477,32 +507,32 @@ const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...'
   const add = () => { const t = val.trim(); if (t) { onChange([...items, t]); setVal(''); } };
   const editAt = (i, text) => onChange(items.map((it,j)=>j===i?text:it));
   return (
-    <div style={{ border:'1px solid #E3E2DF', borderRadius:8, overflow:'hidden' }}>
+    <div style={{ border:'1px solid var(--border-strong)', borderRadius:8, overflow:'hidden' }}>
       {items.map((item, i) => (
-        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', background:'white', borderBottom:'1px solid #EDEDEC' }}>
-          <span style={{ color:'#9ca3af', marginTop:8, flexShrink:0, fontSize:12 }}>•</span>
+        <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:8, padding:'8px 12px', background:'var(--surface)', borderBottom:'1px solid var(--border)' }}>
+          <span style={{ color:'var(--faint)', marginTop:8, flexShrink:0, fontSize:12 }}>•</span>
           <textarea
             value={item} rows={1}
             ref={autoGrow}
             onChange={e=>{ autoGrow(e.target); editAt(i, e.target.value); }}
             onBlur={e=>{ if(!e.target.value.trim()) onChange(items.filter((_,j)=>j!==i)); }}
             onKeyDown={e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); e.target.blur(); } }}
-            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'#374151', lineHeight:'1.45', resize:'none', fontFamily:'inherit', padding:'2px 0', overflow:'hidden', minWidth:0 }} />
+            style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'var(--text)', lineHeight:'1.45', resize:'none', fontFamily:'inherit', padding:'2px 0', overflow:'hidden', minWidth:0 }} />
           <button onClick={() => onChange(items.filter((_,j)=>j!==i))} title="Remove"
-            style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:0, flexShrink:0, marginTop:6 }}
+            style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faintest)', padding:0, flexShrink:0, marginTop:6 }}
             onMouseEnter={e=>e.currentTarget.style.color='#ef4444'}
-            onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+            onMouseLeave={e=>e.currentTarget.style.color='var(--faintest)'}>
             <Icon name="x" size={13} color="currentColor" />
           </button>
         </div>
       ))}
-      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', background:'#F7F6F3' }}>
-        <span style={{ color:'#d1d5db', fontSize:16, flexShrink:0 }}>+</span>
+      <div style={{ display:'flex', alignItems:'center', gap:6, padding:'7px 12px', background:'var(--bg)' }}>
+        <span style={{ color:'var(--faintest)', fontSize:16, flexShrink:0 }}>+</span>
         <input value={val} onChange={e=>setVal(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){e.preventDefault();add();} }}
           onBlur={add}
           placeholder={placeholder}
-          style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'#6b7280' }} />
+          style={{ flex:1, border:'none', outline:'none', background:'transparent', fontSize:14, color:'var(--text-soft)' }} />
       </div>
     </div>
   );
@@ -510,8 +540,8 @@ const BulletList = ({ items=[], onChange, placeholder='Add item, press Enter...'
 
 /* ── Toggle ───────────────────────────────────────────────────────────────── */
 const Toggle = ({ on, onChange }) => (
-  <button onClick={() => onChange(!on)} style={{ width:40, height:22, borderRadius:11, background:on?'#F26B1D':'#d1d5db', border:'none', cursor:'pointer', position:'relative', transition:'background 0.2s', flexShrink:0 }}>
-    <span style={{ position:'absolute', top:2, left:on?20:2, width:18, height:18, borderRadius:'50%', background:'white', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.15)' }} />
+  <button onClick={() => onChange(!on)} style={{ width:40, height:22, borderRadius:11, background:on?'var(--accent)':'var(--faintest)', border:'none', cursor:'pointer', position:'relative', transition:'background 0.2s', flexShrink:0 }}>
+    <span style={{ position:'absolute', top:2, left:on?20:2, width:18, height:18, borderRadius:'50%', background:'var(--surface)', transition:'left 0.2s', boxShadow:'0 1px 3px rgba(0,0,0,0.15)' }} />
   </button>
 );
 
@@ -606,7 +636,7 @@ const PartnerPicker = ({ people, selfId, partnerId, onChange }) => {
     <div ref={ref} style={{ position:'relative' }}>
       <input value={q} onFocus={()=>setOpen(true)} onChange={e=>{ setQ(e.target.value); setOpen(true); }}
         placeholder="Search contacts to link as partner…"
-        style={{ width:'100%', padding:'9px 12px', border:`1px solid ${T.borderStrong}`, borderRadius:8, fontSize:14, color:T.text, background:'white', outline:'none' }} />
+        style={{ width:'100%', padding:'9px 12px', border:`1px solid ${T.borderStrong}`, borderRadius:8, fontSize:14, color:T.text, background:'var(--surface)', outline:'none' }} />
       {open && matches.length > 0 && (
         <div style={{ position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:50, background:T.surface, border:`1px solid ${T.borderStrong}`, borderRadius:10, boxShadow:'0 8px 28px rgba(0,0,0,0.12)', padding:'4px 0', maxHeight:200, overflowY:'auto' }}>
           {matches.map(p => (
@@ -654,13 +684,13 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
 
   return (
     <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal-box" style={{ background:'white', borderRadius:16, width:'100%', maxWidth:520, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div className="modal-box" style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:520, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
-            <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit contact' : 'Add new contact'}</h2>
-            <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>Fill in what you know — you can always add more later</p>
+            <h2 style={{ fontSize:18, fontWeight:700, color:'var(--text-strong)' }}>{isEdit ? 'Edit contact' : 'Add new contact'}</h2>
+            <p style={{ marginTop:2, fontSize:13, color:'var(--faint)' }}>Fill in what you know — you can always add more later</p>
           </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faint)', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
         </div>
 
         <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
@@ -674,7 +704,7 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
           <div>
             <Label>Birthday</Label>
             {(() => {
-              const selStyle = { padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:14, color:'#111827', background:'white', cursor:'pointer' };
+              const selStyle = { padding:'9px 12px', border:'1px solid var(--border-strong)', borderRadius:8, fontSize:14, color:'var(--text-strong)', background:'var(--surface)', cursor:'pointer' };
               const months = [['01','January'],['02','February'],['03','March'],['04','April'],['05','May'],['06','June'],['07','July'],['08','August'],['09','September'],['10','October'],['11','November'],['12','December']];
               return (
                 <div style={{ display:'flex', gap:8 }}>
@@ -738,9 +768,9 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
             <Label>Additional info</Label>
             <textarea value={f.additionalInfo||''} onChange={e=>set('additionalInfo',e.target.value)} rows={3}
               placeholder="Anything else worth remembering…"
-              style={{ width:'100%', padding:'9px 12px', border:'1px solid #E3E2DF', borderRadius:8, fontSize:13, lineHeight:'1.5', resize:'vertical', color:'#374151', background:'#F7F6F3', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
-              onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'}
-              onBlur={e=>e.currentTarget.style.borderColor='#E3E2DF'} />
+              style={{ width:'100%', padding:'9px 12px', border:'1px solid var(--border-strong)', borderRadius:8, fontSize:13, lineHeight:'1.5', resize:'vertical', color:'var(--text)', background:'var(--bg)', fontFamily:'inherit', boxSizing:'border-box', outline:'none', transition:'border-color 0.15s' }}
+              onFocus={e=>e.currentTarget.style.borderColor='var(--accent-border)'}
+              onBlur={e=>e.currentTarget.style.borderColor='var(--border-strong)'} />
           </div>
 
           {/* 10. Groups */}
@@ -756,27 +786,27 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
           </div>
 
           {/* 12. Follow-up reminder */}
-          <div style={{ padding:'14px 16px', background:'#F7F6F3', borderRadius:10, border:'1px solid #EAEAE8' }}>
+          <div style={{ padding:'14px 16px', background:'var(--bg)', borderRadius:10, border:'1px solid var(--border)' }}>
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: f.followUpEnabled ? 12 : 0 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                <Icon name="bell" size={15} color="#6b7280" />
-                <span style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Follow-up reminder</span>
+                <Icon name="bell" size={15} color="var(--text-soft)" />
+                <span style={{ fontSize:14, fontWeight:500, color:'var(--text)' }}>Follow-up reminder</span>
               </div>
               <Toggle on={f.followUpEnabled} onChange={v=>set('followUpEnabled',v)} />
             </div>
             {f.followUpEnabled && (
-              <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:14, color:'#6b7280' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:14, color:'var(--text-soft)' }}>
                 <span>Remind me if I haven't talked in</span>
                 <input type="number" value={f.followUpDays} min={1}
                   onChange={e=>set('followUpDays', parseInt(e.target.value)||30)}
-                  style={{ width:56, padding:'4px 8px', border:'1px solid #E3E2DF', borderRadius:6, fontSize:14, textAlign:'center' }} />
+                  style={{ width:56, padding:'4px 8px', border:'1px solid var(--border-strong)', borderRadius:6, fontSize:14, textAlign:'center' }} />
                 <span>days</span>
               </div>
             )}
           </div>
         </div>
 
-        <div style={{ padding:'14px 24px', borderTop:'1px solid #EDEDEC', display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <div style={{ padding:'14px 24px', borderTop:'1px solid var(--border)', display:'flex', gap:8, justifyContent:'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={() => valid && onSave(f)} style={{ opacity: valid ? 1 : 0.5, cursor: valid ? 'pointer' : 'default' }}>
             {isEdit ? 'Save changes' : 'Add contact'}
@@ -801,14 +831,14 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
 
   return (
     <div className="modal-bg" style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }} onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal-box" style={{ background:'white', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
-        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+      <div className="modal-box" style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:560, maxHeight:'92vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 25px 60px rgba(0,0,0,0.2)' }}>
+        <div style={{ padding:'20px 24px 16px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
           <div>
-            <h2 style={{ fontSize:18, fontWeight:700, color:'#111827' }}>{isEdit ? 'Edit conversation' : isGroup ? 'Log a group gathering' : 'Log a conversation'}</h2>
-            {isEdit && personName && <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>with {personName}</p>}
-            {!isEdit && <p style={{ marginTop:2, fontSize:13, color:'#9ca3af' }}>{isGroup ? `Saved to all ${participantIds.length} people below` : 'Add who was there — log it for one person or a whole group'}</p>}
+            <h2 style={{ fontSize:18, fontWeight:700, color:'var(--text-strong)' }}>{isEdit ? 'Edit conversation' : isGroup ? 'Log a group gathering' : 'Log a conversation'}</h2>
+            {isEdit && personName && <p style={{ marginTop:2, fontSize:13, color:'var(--faint)' }}>with {personName}</p>}
+            {!isEdit && <p style={{ marginTop:2, fontSize:13, color:'var(--faint)' }}>{isGroup ? `Saved to all ${participantIds.length} people below` : 'Add who was there — log it for one person or a whole group'}</p>}
           </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faint)', padding:4 }}><Icon name="x" size={20} color="currentColor" /></button>
         </div>
 
         <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:18 }}>
@@ -843,13 +873,13 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
 
           <div>
             <Label>Open questions</Label>
-            <p style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>Things you want to ask or find out next time</p>
+            <p style={{ fontSize:12, color:'var(--faint)', marginBottom:6 }}>Things you want to ask or find out next time</p>
             <BulletList items={f.openQuestions} onChange={v=>set('openQuestions',v)} placeholder="Add a question..." />
           </div>
 
           <div>
             <Label>Follow-ups & upcoming events</Label>
-            <p style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>Things to do, send, or check back on</p>
+            <p style={{ fontSize:12, color:'var(--faint)', marginBottom:6 }}>Things to do, send, or check back on</p>
             <BulletList items={f.followUps} onChange={v=>set('followUps',v)} placeholder="Add follow-up..." />
           </div>
 
@@ -860,23 +890,23 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
               style={{ minHeight:56 }} />
           </div>
 
-          <div style={{ padding:'12px 14px', background:'#FDF1E7', borderRadius:8, border:'1px solid #FBE2CE' }}>
-            <p style={{ fontSize:11, fontWeight:700, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>📅 Next planned contact</p>
+          <div style={{ padding:'12px 14px', background:'var(--accent-soft)', borderRadius:8, border:'1px solid var(--accent-soft-2)' }}>
+            <p style={{ fontSize:11, fontWeight:700, color:'var(--accent)', textTransform:'uppercase', letterSpacing:'0.06em', marginBottom:10 }}>📅 Next planned contact</p>
             <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1fr 1.6fr', gap:12 }}>
               <div>
                 <Label>Date</Label>
-                <Input type="date" value={f.nextMeeting||''} onChange={e=>set('nextMeeting',e.target.value)} style={{ background:'white' }} />
+                <Input type="date" value={f.nextMeeting||''} onChange={e=>set('nextMeeting',e.target.value)} style={{ background:'var(--surface)' }} />
               </div>
               <div>
                 <Label>Note</Label>
                 <Input value={f.nextMeetingNote||''} onChange={e=>set('nextMeetingNote',e.target.value)}
-                  placeholder="e.g. Coffee, Zoom call, conference…" style={{ background:'white' }} />
+                  placeholder="e.g. Coffee, Zoom call, conference…" style={{ background:'var(--surface)' }} />
               </div>
             </div>
           </div>
         </div>
 
-        <div style={{ padding:'14px 24px', borderTop:'1px solid #EDEDEC', display:'flex', gap:8, justifyContent:'flex-end' }}>
+        <div style={{ padding:'14px 24px', borderTop:'1px solid var(--border)', display:'flex', gap:8, justifyContent:'flex-end' }}>
           <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
           <Btn onClick={() => canSave && onSave(f, participantIds)} style={{ opacity: canSave ? 1 : 0.5, cursor: canSave ? 'pointer' : 'default' }}>
             {isEdit ? 'Save changes' : isGroup ? `▶ Log for ${participantIds.length} people` : '▶ Log conversation'}
@@ -927,24 +957,24 @@ const EditableConvList = ({ items=[], done=[], marker, color, onChange, onToggle
                 display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
               {isDone && <Icon name="check" size={11} color="white" />}
             </button>
-            <span style={{ flex:1, fontSize:14, lineHeight:1.45, color: isDone ? '#9ca3af' : '#374151', textDecoration: isDone ? 'line-through' : 'none' }}>{it}</span>
+            <span style={{ flex:1, fontSize:14, lineHeight:1.45, color: isDone ? 'var(--faint)' : 'var(--text)', textDecoration: isDone ? 'line-through' : 'none' }}>{it}</span>
             {onCycleOwner && (
               <OwnerPill owner={ownerOf(it)} autoMine={autoMineOf(it)} onCycle={()=>onCycleOwner(it)} />
             )}
             <button onClick={()=>remove(i)} title="Remove"
-              style={{ flexShrink:0, background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'0 2px', marginTop:1 }}
-              onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+              style={{ flexShrink:0, background:'none', border:'none', cursor:'pointer', color:'var(--faintest)', padding:'0 2px', marginTop:1 }}
+              onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='var(--faintest)'}>
               <Icon name="x" size={13} color="currentColor" />
             </button>
           </div>
         );
       })}
       <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
-        <span style={{ color:'#d1d5db', fontSize:15, flexShrink:0, width:17, textAlign:'center' }}>+</span>
+        <span style={{ color:'var(--faintest)', fontSize:15, flexShrink:0, width:17, textAlign:'center' }}>+</span>
         <input value={val} onChange={e=>setVal(e.target.value)}
           onKeyDown={e=>{ if(e.key==='Enter'){ e.preventDefault(); add(); } }}
           placeholder={placeholder}
-          style={{ flex:1, border:'none', borderBottom:'1px solid #EDEDEC', outline:'none', background:'transparent', fontSize:13, color:'#6b7280', padding:'3px 0' }} />
+          style={{ flex:1, border:'none', borderBottom:'1px solid var(--border)', outline:'none', background:'transparent', fontSize:13, color:'var(--text-soft)', padding:'3px 0' }} />
         {val.trim() && <button onClick={add} style={{ fontSize:12, fontWeight:600, color:color, background:'none', border:'none', cursor:'pointer' }}>{addLabel}</button>}
       </div>
     </div>
@@ -956,16 +986,16 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
   const toggleIn = (arr, t) => (arr||[]).includes(t) ? (arr||[]).filter(x=>x!==t) : [...(arr||[]), t];
 
   return (
-    <div style={{ border:'1px solid #EAEAE8', borderRadius:10, overflow:'hidden', marginBottom:10, background:'white', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
+    <div style={{ border:'1px solid var(--border)', borderRadius:10, overflow:'hidden', marginBottom:10, background:'var(--surface)', boxShadow:'0 1px 2px rgba(0,0,0,0.04)' }}>
       <div style={{ padding:'12px 14px', cursor:'pointer' }}
         onClick={() => setOpen(o=>!o)}>
         <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', flexWrap:'wrap', gap:8, marginBottom: conv.topics?.length ? 7 : 0 }}>
-              <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>{fmt(conv.date)}</span>
+              <span style={{ fontSize:14, fontWeight:600, color:'var(--text-strong)' }}>{fmt(conv.date)}</span>
               {conv.location && (
-                <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:12, color:'#9ca3af' }}>
-                  <Icon name="pin" size={11} color="#9ca3af" />{conv.location}
+                <span style={{ display:'flex', alignItems:'center', gap:3, fontSize:12, color:'var(--faint)' }}>
+                  <Icon name="pin" size={11} color="var(--faint)" />{conv.location}
                 </span>
               )}
               {conv.participants?.length > 1 && (
@@ -977,16 +1007,16 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
             {conv.topics?.length > 0 && (
               <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
                 {conv.topics.map(t => (
-                  <span key={t} style={{ padding:'2px 8px', background:'#EDEDEC', borderRadius:99, fontSize:12, color:'#6b7280' }}>{t}</span>
+                  <span key={t} style={{ padding:'2px 8px', background:'var(--border)', borderRadius:99, fontSize:12, color:'var(--text-soft)' }}>{t}</span>
                 ))}
               </div>
             )}
           </div>
           <div style={{ display:'flex', alignItems:'center', gap:2, flexShrink:0 }}>
             <button onClick={e=>{e.stopPropagation();onEdit(conv);}}
-              style={{ background:'none', border:'none', cursor:'pointer', color:'#d1d5db', padding:'4px 5px', borderRadius:6 }}
-              onMouseEnter={e=>e.currentTarget.style.color='#F26B1D'}
-              onMouseLeave={e=>e.currentTarget.style.color='#d1d5db'}>
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faintest)', padding:'4px 5px', borderRadius:6 }}
+              onMouseEnter={e=>e.currentTarget.style.color='var(--accent)'}
+              onMouseLeave={e=>e.currentTarget.style.color='var(--faintest)'}>
               <Icon name="edit" size={14} color="currentColor" />
             </button>
             <button onClick={e=>{e.stopPropagation();onDelete(conv.id);}}
@@ -996,7 +1026,7 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
               onMouseLeave={e=>{ e.currentTarget.style.color='#fca5a5'; e.currentTarget.style.background='none'; }}>
               <Icon name="trash" size={14} color="currentColor" />
             </button>
-            <span style={{ color:'#9ca3af', paddingLeft:2 }}>
+            <span style={{ color:'var(--faint)', paddingLeft:2 }}>
               <Icon name={open?'chevD':'chevR'} size={16} color="currentColor" />
             </span>
           </div>
@@ -1004,10 +1034,10 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
       </div>
 
       {open && (
-        <div style={{ padding:'2px 14px 14px', borderTop:'1px solid #F7F6F3' }}>
+        <div style={{ padding:'2px 14px 14px', borderTop:'1px solid var(--bg)' }}>
           {conv.insights && (
             <Section label="Insights">
-              <p style={{ fontSize:14, color:'#374151', lineHeight:'1.6', margin:0 }}>{conv.insights}</p>
+              <p style={{ fontSize:14, color:'var(--text)', lineHeight:'1.6', margin:0 }}>{conv.insights}</p>
             </Section>
           )}
           <Section label="Open questions">
@@ -1020,7 +1050,7 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
           </Section>
           <Section label="Follow-ups & upcoming events">
             <EditableConvList
-              items={conv.followUps} done={conv.doneFollowUps} marker="→" color="#F26B1D"
+              items={conv.followUps} done={conv.doneFollowUps} marker="→" color="var(--accent)"
               placeholder="Add a follow-up or commitment…" addLabel="Add"
               onChange={(arr)=>{
                 const keep = new Set(arr);
@@ -1038,7 +1068,7 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
           </Section>
           {conv.notes && (
             <Section label="Notes">
-              <p style={{ fontSize:14, color:'#6b7280', fontStyle:'italic', margin:0 }}>{conv.notes}</p>
+              <p style={{ fontSize:14, color:'var(--text-soft)', fontStyle:'italic', margin:0 }}>{conv.notes}</p>
             </Section>
           )}
         </div>
@@ -1049,7 +1079,7 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
 
 const Section = ({ label, children }) => (
   <div style={{ marginTop:10 }}>
-    <p style={{ fontSize:10, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:5 }}>{label}</p>
+    <p style={{ fontSize:10, fontWeight:800, color:'var(--faint)', textTransform:'uppercase', letterSpacing:'0.08em', marginBottom:5 }}>{label}</p>
     {children}
   </div>
 );
@@ -1060,41 +1090,41 @@ const ResumeCard = ({ person }) => {
 
   // No conversations yet
   if (!brief) return (
-    <div style={{ background:'linear-gradient(135deg,#FDF1E7,#FDF1E7)', border:'1px solid #F6CBA3', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+    <div style={{ background:'linear-gradient(135deg,var(--accent-soft),var(--accent-soft))', border:'1px solid var(--accent-border)', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
       <div style={{ display:'flex', alignItems:'center', gap:7, marginBottom:8 }}>
-        <span style={{ color:'#F26B1D', fontSize:15 }}>▶</span>
-        <span style={{ fontSize:11, fontWeight:800, color:'#DC5A1A', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
+        <span style={{ color:'var(--accent)', fontSize:15 }}>▶</span>
+        <span style={{ fontSize:11, fontWeight:800, color:'var(--accent-strong)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
       </div>
-      <p style={{ fontSize:14, color:'#6b7280', fontStyle:'italic' }}>Log your first conversation to generate a prep brief.</p>
+      <p style={{ fontSize:14, color:'var(--text-soft)', fontStyle:'italic' }}>Log your first conversation to generate a prep brief.</p>
     </div>
   );
 
   return (
-    <div style={{ background:'linear-gradient(135deg,#FDF1E7,#FDF1E7)', border:'1px solid #F6CBA3', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
+    <div style={{ background:'linear-gradient(135deg,var(--accent-soft),var(--accent-soft))', border:'1px solid var(--accent-border)', borderRadius:12, padding:'16px 18px', marginBottom:14 }}>
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
         <div style={{ display:'flex', alignItems:'center', gap:7 }}>
-          <span style={{ color:'#F26B1D', fontSize:15 }}>▶</span>
-          <span style={{ fontSize:11, fontWeight:800, color:'#DC5A1A', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
+          <span style={{ color:'var(--accent)', fontSize:15 }}>▶</span>
+          <span style={{ fontSize:11, fontWeight:800, color:'var(--accent-strong)', textTransform:'uppercase', letterSpacing:'0.08em' }}>Ready to Resume</span>
         </div>
         <span style={{ fontSize:12, color:'#F0A668' }}>{fmt(brief.lastDate)}</span>
       </div>
 
       {/* Synopsis paragraph */}
-      <p style={{ fontSize:14, color:'#374151', lineHeight:'1.65', marginBottom: (brief.pickUpOn.length||brief.starters.length) ? 14 : 0 }}>
+      <p style={{ fontSize:14, color:'var(--text)', lineHeight:'1.65', marginBottom: (brief.pickUpOn.length||brief.starters.length) ? 14 : 0 }}>
         {brief.synopsis}
       </p>
 
       {/* Pick up on */}
       {brief.pickUpOn.length > 0 && (
         <div style={{ marginBottom: brief.starters.length ? 12 : 0 }}>
-          <p style={{ fontSize:10, fontWeight:800, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Pick up on</p>
+          <p style={{ fontSize:10, fontWeight:800, color:'var(--accent)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Pick up on</p>
           {brief.pickUpOn.map((item,i) => (
             <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:5 }}>
-              <span style={{ fontWeight:700, flexShrink:0, fontSize:13, color: item.type==='question' ? '#f59e0b' : '#F26B1D', marginTop:1 }}>
+              <span style={{ fontWeight:700, flexShrink:0, fontSize:13, color: item.type==='question' ? '#f59e0b' : 'var(--accent)', marginTop:1 }}>
                 {item.type==='question' ? '?' : '→'}
               </span>
-              <span style={{ fontSize:13, color:'#374151', lineHeight:'1.5' }}>{item.text}</span>
+              <span style={{ fontSize:13, color:'var(--text)', lineHeight:'1.5' }}>{item.text}</span>
             </div>
           ))}
         </div>
@@ -1103,11 +1133,11 @@ const ResumeCard = ({ person }) => {
       {/* Conversation starters */}
       {brief.starters.length > 0 && (
         <div>
-          <p style={{ fontSize:10, fontWeight:800, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Conversation starters</p>
+          <p style={{ fontSize:10, fontWeight:800, color:'var(--accent)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:7 }}>Conversation starters</p>
           {brief.starters.map((s,i) => (
             <div key={i} style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:5 }}>
               <span style={{ fontSize:13, flexShrink:0, marginTop:1 }}>💡</span>
-              <span style={{ fontSize:13, color:'#374151', lineHeight:'1.5' }}>{s}</span>
+              <span style={{ fontSize:13, color:'var(--text)', lineHeight:'1.5' }}>{s}</span>
             </div>
           ))}
         </div>
@@ -1138,16 +1168,16 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
   return (
     <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
       {/* Top bar */}
-      <div className="r-pad r-actions" style={{ padding:'14px 24px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
-        <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, display:'flex', alignItems:'center' }}
-          onMouseEnter={e=>e.currentTarget.style.color='#374151'} onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>
+      <div className="r-pad r-actions" style={{ padding:'14px 24px', background:'var(--surface)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
+        <button onClick={onBack} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faint)', padding:4, display:'flex', alignItems:'center' }}
+          onMouseEnter={e=>e.currentTarget.style.color='var(--text)'} onMouseLeave={e=>e.currentTarget.style.color='var(--faint)'}>
           <Icon name="back" size={20} color="currentColor" />
         </button>
         <Avatar name={person.name} size={44} />
         <div style={{ flex:1, minWidth:120 }}>
-          <h1 style={{ fontSize:20, fontWeight:700, color:'#111827', marginBottom:1 }}>{person.name}</h1>
+          <h1 style={{ fontSize:20, fontWeight:700, color:'var(--text-strong)', marginBottom:1 }}>{person.name}</h1>
           {(person.role||person.company) && (
-            <p style={{ fontSize:13, color:'#6b7280' }}>{[person.role, person.company].filter(Boolean).join(' · ')}</p>
+            <p style={{ fontSize:13, color:'var(--text-soft)' }}>{[person.role, person.company].filter(Boolean).join(' · ')}</p>
           )}
         </div>
         <div style={{ display:'flex', gap:6, flexWrap:'wrap', justifyContent:'flex-end' }}>
@@ -1155,16 +1185,16 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
             <Icon name="plus" size={14} color="white" />Log conversation
           </Btn>
           <Btn variant="secondary" onClick={onSchedule} style={{ fontSize:13 }}>
-            <Icon name="calendar" size={14} color="#6b7280" />Schedule
+            <Icon name="calendar" size={14} color="var(--text-soft)" />Schedule
           </Btn>
           <Btn variant="secondary" onClick={()=>onEditPerson(person)} style={{ padding:'8px 10px' }}>
-            <Icon name="edit" size={15} color="#6b7280" />
+            <Icon name="edit" size={15} color="var(--text-soft)" />
           </Btn>
           <Btn variant="secondary" onClick={()=>onDeletePerson(person.id)}
             title="Delete contact"
             style={{ padding:'8px 10px', borderColor:'#fecaca', transition:'all 0.15s' }}
             onMouseEnter={e=>{ e.currentTarget.style.background='#fef2f2'; e.currentTarget.style.borderColor='#ef4444'; }}
-            onMouseLeave={e=>{ e.currentTarget.style.background='white'; e.currentTarget.style.borderColor='#fecaca'; }}>
+            onMouseLeave={e=>{ e.currentTarget.style.background='var(--surface)'; e.currentTarget.style.borderColor='#fecaca'; }}>
             <Icon name="trash" size={15} color="#ef4444" />
           </Btn>
         </div>
@@ -1181,7 +1211,7 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
           <div style={{ background:T.surface, borderRadius:12, padding:'14px 18px', border:`1px solid ${T.accentBorder}`, marginBottom:16 }}>
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
               <Icon name="calendar" size={15} color={T.accent} />
-              <h3 style={{ fontSize:13, fontWeight:700, color:'#111827' }}>Upcoming</h3>
+              <h3 style={{ fontSize:13, fontWeight:700, color:'var(--text-strong)' }}>Upcoming</h3>
             </div>
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
               {upcoming.map(u => {
@@ -1191,24 +1221,24 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
                   <div key={u.kind+u.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 10px', background:T.bg, borderRadius:9, border:`1px solid ${T.border}` }}>
                     <div style={{ width:42, textAlign:'center', flexShrink:0 }}>
                       <p style={{ fontSize:10, fontWeight:700, color:T.accent, textTransform:'uppercase', lineHeight:1 }}>{d.toLocaleDateString('en-US',{month:'short'})}</p>
-                      <p style={{ fontSize:17, fontWeight:800, color:'#111827', lineHeight:1.1 }}>{d.getDate()}</p>
+                      <p style={{ fontSize:17, fontWeight:800, color:'var(--text-strong)', lineHeight:1.1 }}>{d.getDate()}</p>
                     </div>
                     <div style={{ flex:1, minWidth:0 }}>
-                      <p style={{ fontSize:13, fontWeight:600, color:'#111827' }}>{[u.time, u.title].filter(Boolean).join(' · ')}</p>
-                      <p style={{ fontSize:11, color:'#9ca3af' }}>
+                      <p style={{ fontSize:13, fontWeight:600, color:'var(--text-strong)' }}>{[u.time, u.title].filter(Boolean).join(' · ')}</p>
+                      <p style={{ fontSize:11, color:'var(--faint)' }}>
                         {dd}{u.location ? ` · ${u.location}` : ''}{u.participants?.length>1 ? ` · with ${u.participants.length} people` : (u.kind==='meeting' ? ' · from a conversation' : '')}
                       </p>
                     </div>
                     {u.kind==='event' && (
                       <div style={{ display:'flex', gap:2, flexShrink:0 }}>
                         <button onClick={()=>onEditEvent(u.raw)} title="Edit"
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#c4c8d4', padding:4 }}
-                          onMouseEnter={e=>e.currentTarget.style.color=T.accent} onMouseLeave={e=>e.currentTarget.style.color='#c4c8d4'}>
+                          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faintest)', padding:4 }}
+                          onMouseEnter={e=>e.currentTarget.style.color=T.accent} onMouseLeave={e=>e.currentTarget.style.color='var(--faintest)'}>
                           <Icon name="edit" size={14} color="currentColor" />
                         </button>
                         <button onClick={()=>onDeleteEvent(person.id, u.id)} title="Delete"
-                          style={{ background:'none', border:'none', cursor:'pointer', color:'#c4c8d4', padding:4 }}
-                          onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='#c4c8d4'}>
+                          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faintest)', padding:4 }}
+                          onMouseEnter={e=>e.currentTarget.style.color='#ef4444'} onMouseLeave={e=>e.currentTarget.style.color='var(--faintest)'}>
                           <Icon name="trash" size={14} color="currentColor" />
                         </button>
                       </div>
@@ -1244,7 +1274,7 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
           </div>
           {partner && (
             <div style={{ marginTop:10 }}>
-              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Partner</p>
+              <p style={{ fontSize:11, color:'var(--faint)', marginBottom:6 }}>Partner</p>
               <button onClick={()=>onOpenPartner(partner.id)}
                 style={{ display:'inline-flex', alignItems:'center', gap:8, padding:'5px 12px 5px 6px', background:T.accentSoft, border:`1px solid ${T.accentBorder}`, borderRadius:99, cursor:'pointer' }}
                 onMouseEnter={e=>e.currentTarget.style.background=T.accentSoft2}
@@ -1257,7 +1287,7 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
           )}
           {person.kids?.length > 0 && (
             <div style={{ marginTop:10 }}>
-              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Kids</p>
+              <p style={{ fontSize:11, color:'var(--faint)', marginBottom:6 }}>Kids</p>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                 {person.kids.map((k,i) => (
                   <span key={i} style={{ padding:'3px 10px', background:'#fef3c7', color:'#92400e', borderRadius:99, fontSize:13 }}>🧒 {kidDisplay(k)}</span>
@@ -1267,22 +1297,22 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
           )}
           {person.hobbies?.length > 0 && (
             <div style={{ marginTop:10 }}>
-              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:6 }}>Interests</p>
+              <p style={{ fontSize:11, color:'var(--faint)', marginBottom:6 }}>Interests</p>
               <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
                 {person.hobbies.map(h => (
-                  <span key={h} style={{ padding:'3px 10px', background:'#FDF1E7', color:'#DC5A1A', borderRadius:99, fontSize:13 }}>{h}</span>
+                  <span key={h} style={{ padding:'3px 10px', background:'var(--accent-soft)', color:'var(--accent-strong)', borderRadius:99, fontSize:13 }}>{h}</span>
                 ))}
               </div>
             </div>
           )}
           {person.additionalInfo && (
             <div style={{ marginTop:10 }}>
-              <p style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Notes</p>
-              <p style={{ fontSize:13, color:'#374151', lineHeight:'1.55' }}>{person.additionalInfo}</p>
+              <p style={{ fontSize:11, color:'var(--faint)', marginBottom:4 }}>Notes</p>
+              <p style={{ fontSize:13, color:'var(--text)', lineHeight:'1.55' }}>{person.additionalInfo}</p>
             </div>
           )}
           {!person.howMet && !person.hometown && !person.so && !partner && !person.birthday && !person.hobbies?.length && !person.kids?.length && !person.additionalInfo && (
-            <p style={{ fontSize:14, color:'#9ca3af', fontStyle:'italic' }}>No details yet — edit to add.</p>
+            <p style={{ fontSize:14, color:'var(--faint)', fontStyle:'italic' }}>No details yet — edit to add.</p>
           )}
         </Card>
 
@@ -1291,8 +1321,8 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
           <Card title={`Themes across ${sorted.length} conversations`}>
             <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
               {allTopics.map(([t,n]) => (
-                <span key={t} style={{ padding:'3px 10px', background:'#EDEDEC', borderRadius:99, fontSize:12, color:'#374151' }}>
-                  {t}{n>1 && <span style={{ color:'#9ca3af', fontSize:11, marginLeft:3 }}>×{n}</span>}
+                <span key={t} style={{ padding:'3px 10px', background:'var(--border)', borderRadius:99, fontSize:12, color:'var(--text)' }}>
+                  {t}{n>1 && <span style={{ color:'var(--faint)', fontSize:11, marginLeft:3 }}>×{n}</span>}
                 </span>
               ))}
             </div>
@@ -1302,14 +1332,14 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
         {/* Conversations */}
         <div>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
-            <h3 style={{ fontSize:12, fontWeight:700, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.06em' }}>
+            <h3 style={{ fontSize:12, fontWeight:700, color:'var(--faint)', textTransform:'uppercase', letterSpacing:'0.06em' }}>
               Conversations ({sorted.length})
             </h3>
           </div>
           {sorted.length === 0 ? (
             <div style={{ textAlign:'center', padding:'36px 20px' }}>
-              <Icon name="msg" size={32} color="#E3E2DF" />
-              <p style={{ marginTop:8, fontSize:14, color:'#9ca3af' }}>No conversations logged yet</p>
+              <Icon name="msg" size={32} color="var(--border-strong)" />
+              <p style={{ marginTop:8, fontSize:14, color:'var(--faint)' }}>No conversations logged yet</p>
             </div>
           ) : (
             sorted.map(c => (
@@ -1328,16 +1358,16 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
 };
 
 const Card = ({ title, children }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', marginBottom:14, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', border:'1px solid #EDEDEC' }}>
-    <h3 style={{ fontSize:11, fontWeight:800, color:'#9ca3af', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>{title}</h3>
+  <div style={{ background:'var(--surface)', borderRadius:12, padding:'16px 18px', marginBottom:14, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', border:'1px solid var(--border)' }}>
+    <h3 style={{ fontSize:11, fontWeight:800, color:'var(--faint)', textTransform:'uppercase', letterSpacing:'0.07em', marginBottom:12 }}>{title}</h3>
     {children}
   </div>
 );
 
 const InfoPair = ({ label, val }) => (
   <div style={{ marginBottom:6 }}>
-    <p style={{ fontSize:11, color:'#9ca3af', marginBottom:1 }}>{label}</p>
-    <p style={{ fontSize:14, color:'#374151' }}>{val}</p>
+    <p style={{ fontSize:11, color:'var(--faint)', marginBottom:1 }}>{label}</p>
+    <p style={{ fontSize:14, color:'var(--text)' }}>{val}</p>
   </div>
 );
 
@@ -1346,11 +1376,11 @@ const Chip = ({ active, onClick, children }) => (
   <button onClick={onClick}
     style={{ padding:'4px 11px', borderRadius:99, border:'none', cursor:'pointer', fontSize:12,
       fontWeight: active ? 700 : 500, whiteSpace:'nowrap',
-      background: active ? '#F26B1D' : '#EDEDEC',
-      color: active ? 'white' : '#6b7280',
+      background: active ? 'var(--accent)' : 'var(--border)',
+      color: active ? 'white' : 'var(--text-soft)',
       transition:'all 0.15s' }}
-    onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='#E3E2DF'; }}
-    onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='#EDEDEC'; }}>
+    onMouseEnter={e=>{ if(!active) e.currentTarget.style.background='var(--border-strong)'; }}
+    onMouseLeave={e=>{ if(!active) e.currentTarget.style.background='var(--border)'; }}>
     {children}
   </button>
 );
@@ -1434,14 +1464,14 @@ const SearchResults = ({ results, query, onSelect, selectedId }) => {
   if (!results.length) return (
     <div style={{ padding:'40px 16px', textAlign:'center' }}>
       <div style={{ fontSize:32, marginBottom:10 }}>🔍</div>
-      <p style={{ fontSize:14, color:'#6b7280', fontWeight:500 }}>No matches for "{query}"</p>
-      <p style={{ fontSize:12, color:'#9ca3af', marginTop:4 }}>Try a location, topic, name, or any detail you remember</p>
+      <p style={{ fontSize:14, color:'var(--text-soft)', fontWeight:500 }}>No matches for "{query}"</p>
+      <p style={{ fontSize:12, color:'var(--faint)', marginTop:4 }}>Try a location, topic, name, or any detail you remember</p>
     </div>
   );
 
   return (
     <div style={{ padding:'6px 8px 8px' }}>
-      <p style={{ fontSize:11, color:'#9ca3af', padding:'2px 4px 8px' }}>
+      <p style={{ fontSize:11, color:'var(--faint)', padding:'2px 4px 8px' }}>
         {results.length} match{results.length!==1?'es':''} found
       </p>
       {results.map(({ person, matches }) => {
@@ -1450,21 +1480,21 @@ const SearchResults = ({ results, query, onSelect, selectedId }) => {
           <div key={person.id}
             onClick={() => onSelect(person.id)}
             style={{ padding:'10px 11px', borderRadius:10, cursor:'pointer', marginBottom:5,
-              background: sel ? '#FDF1E7' : 'white',
-              border: `1px solid ${sel?'#F6CBA3':'#EAEAE8'}`,
+              background: sel ? 'var(--accent-soft)' : 'white',
+              border: `1px solid ${sel?'var(--accent-border)':'var(--border)'}`,
               boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}
-            onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#F7F6F3'; }}
-            onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'#FDF1E7':'white'; }}>
+            onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='var(--bg)'; }}
+            onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background=sel?'var(--accent-soft)':'white'; }}>
 
             {/* Person header */}
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom: matches.length ? 7 : 0 }}>
               <Avatar name={person.name} size={30} />
               <div style={{ minWidth:0 }}>
-                <p style={{ fontSize:14, fontWeight:600, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                <p style={{ fontSize:14, fontWeight:600, color:'var(--text-strong)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                   <Highlight text={person.name} query={query} />
                 </p>
                 {(person.role||person.company) && (
-                  <p style={{ fontSize:11, color:'#9ca3af', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                  <p style={{ fontSize:11, color:'var(--faint)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
                     {[person.role, person.company].filter(Boolean).join(' · ')}
                   </p>
                 )}
@@ -1474,11 +1504,11 @@ const SearchResults = ({ results, query, onSelect, selectedId }) => {
             {/* Match reasons */}
             {matches.map((m, i) => (
               <div key={i} style={{ display:'flex', gap:6, alignItems:'flex-start', marginTop: i===0 ? 0 : 4,
-                padding:'5px 8px', background: sel ? 'rgba(255,255,255,0.6)' : '#F7F6F3', borderRadius:6 }}>
+                padding:'5px 8px', background: sel ? 'rgba(255,255,255,0.6)' : 'var(--bg)', borderRadius:6 }}>
                 <span style={{ fontSize:12, flexShrink:0, lineHeight:'1.5', marginTop:1 }}>{m.icon}</span>
                 <span style={{ fontSize:12, color:'#4b5563', lineHeight:'1.5', flex:1, minWidth:0, wordBreak:'break-word' }}>
                   <Highlight text={m.text} query={query} />
-                  {m.date && <span style={{ color:'#d1d5db', marginLeft:5, whiteSpace:'nowrap' }}>{fmt(m.date)}</span>}
+                  {m.date && <span style={{ color:'var(--faintest)', marginLeft:5, whiteSpace:'nowrap' }}>{fmt(m.date)}</span>}
                 </span>
               </div>
             ))}
@@ -1655,16 +1685,16 @@ const parseNaturalInput = (text, people) => {
 const EditRow = ({ icon, label, children }) => (
   <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:8 }}>
     <span style={{ fontSize:13, flexShrink:0, width:18 }}>{icon}</span>
-    <span style={{ fontSize:11, color:'#9ca3af', flexShrink:0, width:96, textTransform:'uppercase', letterSpacing:'0.04em' }}>{label}</span>
+    <span style={{ fontSize:11, color:'var(--faint)', flexShrink:0, width:96, textTransform:'uppercase', letterSpacing:'0.04em' }}>{label}</span>
     {children}
   </div>
 );
 
 const inlineInput = (value, onChange, placeholder, type='text') => (
   <input type={type} value={value||''} onChange={e=>onChange(e.target.value)} placeholder={placeholder}
-    style={{ flex:1, padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'white' }}
-    onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'}
-    onBlur={e=>e.currentTarget.style.borderColor='#d1d5db'} />
+    style={{ flex:1, padding:'4px 8px', border:'1px solid var(--faintest)', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'var(--surface)' }}
+    onFocus={e=>e.currentTarget.style.borderColor='var(--accent-border)'}
+    onBlur={e=>e.currentTarget.style.borderColor='var(--faintest)'} />
 );
 
 /* Comma-separated array editor that keeps the RAW typed text (including trailing
@@ -1686,9 +1716,9 @@ const ArrayInput = ({ value=[], onChange, placeholder }) => {
   };
   return (
     <input type="text" value={text} onChange={handle} placeholder={placeholder}
-      style={{ flex:1, padding:'5px 9px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'white' }}
-      onFocus={e=>e.currentTarget.style.borderColor='#F6CBA3'}
-      onBlur={e=>e.currentTarget.style.borderColor='#d1d5db'} />
+      style={{ flex:1, padding:'5px 9px', border:'1px solid var(--faintest)', borderRadius:6, fontSize:12, outline:'none', fontFamily:'inherit', minWidth:0, background:'var(--surface)' }}
+      onFocus={e=>e.currentTarget.style.borderColor='var(--accent-border)'}
+      onBlur={e=>e.currentTarget.style.borderColor='var(--faintest)'} />
   );
 };
 const arrayInput = (arr, onChange, placeholder) => (
@@ -1719,7 +1749,7 @@ const EditableParsed = ({ parsed, ep, onChange }) => {
       </div>
 
       {intent === 'unclear' && (
-        <p style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', lineHeight:'1.5' }}>
+        <p style={{ fontSize:13, color:'var(--text-soft)', fontStyle:'italic', lineHeight:'1.5' }}>
           Try starting with the person's name, e.g. "Caught up with Sarah…" or "Just met John at the conference…"
         </p>
       )}
@@ -1768,8 +1798,8 @@ const ParseRow = ({ icon, label, value }) => (
   <div style={{ display:'flex', gap:8, alignItems:'flex-start', marginBottom:7 }}>
     <span style={{ fontSize:13, flexShrink:0, marginTop:1 }}>{icon}</span>
     <div style={{ minWidth:0 }}>
-      <span style={{ fontSize:10, color:'#9ca3af', display:'block', marginBottom:1, textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:700 }}>{label}</span>
-      <span style={{ fontSize:13, color:'#374151', lineHeight:'1.4', display:'block', wordBreak:'break-word' }}>{value}</span>
+      <span style={{ fontSize:10, color:'var(--faint)', display:'block', marginBottom:1, textTransform:'uppercase', letterSpacing:'0.05em', fontWeight:700 }}>{label}</span>
+      <span style={{ fontSize:13, color:'var(--text)', lineHeight:'1.4', display:'block', wordBreak:'break-word' }}>{value}</span>
     </div>
   </div>
 );
@@ -1798,12 +1828,12 @@ const ParsedCard = ({ parsed }) => {
         <span style={{ fontSize:18, flexShrink:0 }}>{isOk ? '✅' : '⚠️'}</span>
         <div>
           <p style={{ fontSize:13, fontWeight:700, color: isOk?'#166534':'#991b1b', lineHeight:'1.3' }}>{headerText}</p>
-          {subText && <p style={{ fontSize:11, color: isOk?'#4b7c59':'#9ca3af', marginTop:2 }}>{subText}</p>}
+          {subText && <p style={{ fontSize:11, color: isOk?'#4b7c59':'var(--faint)', marginTop:2 }}>{subText}</p>}
         </div>
       </div>
 
       {intent === 'unclear' && (
-        <p style={{ fontSize:13, color:'#6b7280', fontStyle:'italic', lineHeight:'1.5' }}>
+        <p style={{ fontSize:13, color:'var(--text-soft)', fontStyle:'italic', lineHeight:'1.5' }}>
           Try starting with the person's name, e.g. "Caught up with Sarah…" or "Just met John Smith at the conference…"
         </p>
       )}
@@ -1841,7 +1871,7 @@ const ParsedCard = ({ parsed }) => {
       )}
 
       {isOk && (
-        <p style={{ fontSize:11, color:'#6b7280', marginTop:10, fontStyle:'italic' }}>
+        <p style={{ fontSize:11, color:'var(--text-soft)', marginTop:10, fontStyle:'italic' }}>
           Your full text is saved as notes. You can edit details anytime from the contact.
         </p>
       )}
@@ -1983,17 +2013,17 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:200, padding:20 }}
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={{ background:'white', borderRadius:16, width:'100%', maxWidth:580, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.18)' }}>
+      <div style={{ background:'var(--surface)', borderRadius:16, width:'100%', maxWidth:580, maxHeight:'90vh', overflow:'hidden', display:'flex', flexDirection:'column', boxShadow:'0 24px 64px rgba(0,0,0,0.18)' }}>
 
         {/* Header */}
-        <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ padding:'18px 22px 14px', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexShrink:0 }}>
           <div>
-            <h2 style={{ fontSize:17, fontWeight:800, color:'#111827', display:'flex', alignItems:'center', gap:8 }}>
-              <Icon name="pen" size={16} color="#F26B1D" /> Quick capture
+            <h2 style={{ fontSize:17, fontWeight:800, color:'var(--text-strong)', display:'flex', alignItems:'center', gap:8 }}>
+              <Icon name="pen" size={16} color="var(--accent)" /> Quick capture
             </h2>
-            <p style={{ fontSize:12, color:'#9ca3af', marginTop:3 }}>Type what you remember — I'll pull out the key details</p>
+            <p style={{ fontSize:12, color:'var(--faint)', marginTop:3 }}>Type what you remember — I'll pull out the key details</p>
           </div>
-          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4, display:'flex', alignItems:'center' }}>
+          <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faint)', padding:4, display:'flex', alignItems:'center' }}>
             <Icon name="x" size={18} color="currentColor" />
           </button>
         </div>
@@ -2009,33 +2039,33 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
           {saved && (
             <div style={{ textAlign:'center', padding:'36px 0' }}>
               <div style={{ fontSize:48, marginBottom:12 }}>✅</div>
-              <p style={{ fontSize:16, fontWeight:700, color:'#111827' }}>Saved!</p>
-              <p style={{ fontSize:13, color:'#9ca3af', marginTop:5 }}>{savedMsg}</p>
+              <p style={{ fontSize:16, fontWeight:700, color:'var(--text-strong)' }}>Saved!</p>
+              <p style={{ fontSize:13, color:'var(--faint)', marginTop:5 }}>{savedMsg}</p>
             </div>
           )}
         </div>
 
         {/* Input + actions */}
         {!saved && (
-          <div style={{ padding:'14px 22px 20px', borderTop:'1px solid #EDEDEC', flexShrink:0 }}>
+          <div style={{ padding:'14px 22px 20px', borderTop:'1px solid var(--border)', flexShrink:0 }}>
             <div style={{ position:'relative' }}>
               <textarea ref={textRef} value={text} onChange={e => setText(e.target.value)} rows={6}
                 placeholder={"What do you remember? (or tap the mic and speak)"}
                 wrap="soft"
-                style={{ width:'100%', minHeight:120, maxHeight:'45vh', padding:'11px 42px 11px 13px', border:'1px solid #E3E2DF', borderRadius:10, fontSize:14, lineHeight:'1.6', resize:'vertical', color:'#374151', background:'#F7F6F3', fontFamily:'inherit', boxSizing:'border-box', outline:'none', whiteSpace:'pre-wrap', overflowWrap:'anywhere', transition:'border-color 0.15s' }}
-                onFocus={e => e.currentTarget.style.borderColor = listening ? '#f87171' : '#F6CBA3'}
-                onBlur={e => e.currentTarget.style.borderColor = listening ? '#f87171' : '#E3E2DF'}
+                style={{ width:'100%', minHeight:120, maxHeight:'45vh', padding:'11px 42px 11px 13px', border:'1px solid var(--border-strong)', borderRadius:10, fontSize:14, lineHeight:'1.6', resize:'vertical', color:'var(--text)', background:'var(--bg)', fontFamily:'inherit', boxSizing:'border-box', outline:'none', whiteSpace:'pre-wrap', overflowWrap:'anywhere', transition:'border-color 0.15s' }}
+                onFocus={e => e.currentTarget.style.borderColor = listening ? '#f87171' : 'var(--accent-border)'}
+                onBlur={e => e.currentTarget.style.borderColor = listening ? '#f87171' : 'var(--border-strong)'}
                 onKeyDown={e => { if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); parsed ? handleSave() : handleParse(); } }}
               />
               <button onClick={toggleMic} title={listening ? 'Stop dictation' : 'Start dictation'}
-                style={{ position:'absolute', top:10, right:10, padding:6, borderRadius:7, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', background: listening ? '#ef4444' : '#EDEDEC', color: listening ? 'white' : '#6b7280', animation: listening ? 'micPulse 1.2s ease-in-out infinite' : 'none', transition:'background 0.15s, color 0.15s' }}
-                onMouseEnter={e => { if (!listening) { e.currentTarget.style.background='#E3E2DF'; } }}
-                onMouseLeave={e => { if (!listening) { e.currentTarget.style.background='#EDEDEC'; } }}>
+                style={{ position:'absolute', top:10, right:10, padding:6, borderRadius:7, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', background: listening ? '#ef4444' : 'var(--border)', color: listening ? 'white' : 'var(--text-soft)', animation: listening ? 'micPulse 1.2s ease-in-out infinite' : 'none', transition:'background 0.15s, color 0.15s' }}
+                onMouseEnter={e => { if (!listening) { e.currentTarget.style.background='var(--border-strong)'; } }}
+                onMouseLeave={e => { if (!listening) { e.currentTarget.style.background='var(--border)'; } }}>
                 <Icon name="mic" size={16} color="currentColor" />
               </button>
             </div>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:10 }}>
-              <span style={{ fontSize:11, color:'#d1d5db' }}>⌘↵ to {parsed ? 'save' : 'parse'}</span>
+              <span style={{ fontSize:11, color:'var(--faintest)' }}>⌘↵ to {parsed ? 'save' : 'parse'}</span>
               <div style={{ display:'flex', gap:8 }}>
                 {parsed && (<>
                   <button onClick={handleReparse}
@@ -2047,20 +2077,20 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
                   </button>
                   <button onClick={handleReset}
                     title="Clear everything and start fresh"
-                    style={{ padding:'7px 14px', background:'#F7F6F3', border:'1px solid #E3E2DF', borderRadius:8, fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = '#EDEDEC'}
-                    onMouseLeave={e => e.currentTarget.style.background = '#F7F6F3'}>
+                    style={{ padding:'7px 14px', background:'var(--bg)', border:'1px solid var(--border-strong)', borderRadius:8, fontSize:13, color:'var(--text-soft)', cursor:'pointer', fontWeight:500, transition:'background 0.1s' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'var(--border)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'var(--bg)'}>
                     ✕ Clear
                   </button>
                 </>)}
                 {!parsed ? (
                   <button onClick={handleParse} disabled={!text.trim()}
-                    style={{ padding:'7px 20px', background: text.trim() ? '#F26B1D' : '#E3E2DF', color: text.trim() ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: text.trim() ? 'pointer' : 'default', transition:'all 0.15s' }}>
+                    style={{ padding:'7px 20px', background: text.trim() ? 'var(--accent)' : 'var(--border-strong)', color: text.trim() ? 'white' : 'var(--faint)', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: text.trim() ? 'pointer' : 'default', transition:'all 0.15s' }}>
                     Parse →
                   </button>
                 ) : (
                   <button onClick={handleSave} disabled={!canSave}
-                    style={{ padding:'7px 20px', background: canSave ? '#F26B1D' : '#E3E2DF', color: canSave ? 'white' : '#9ca3af', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: canSave ? 'pointer' : 'default' }}>
+                    style={{ padding:'7px 20px', background: canSave ? 'var(--accent)' : 'var(--border-strong)', color: canSave ? 'white' : 'var(--faint)', border:'none', borderRadius:8, fontSize:13, fontWeight:700, cursor: canSave ? 'pointer' : 'default' }}>
                     Save →
                   </button>
                 )}
@@ -2074,7 +2104,7 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
 };
 
 /* ── Sidebar ──────────────────────────────────────────────────────────────── */
-const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, onOpenSettings, onLock, isMobile, onCloseDrawer, userEmail, search, setSearch, sortBy, setSortBy, saveStatus }) => {
+const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onQuickCapture, onOpenSettings, onLock, isMobile, onCloseDrawer, userEmail, theme, onToggleTheme, search, setSearch, sortBy, setSortBy, saveStatus }) => {
   const [activeGroup, setActiveGroup] = useState(null);
   const [addMenu, setAddMenu] = useState(false);
   const addRef = useRef(null);
@@ -2112,13 +2142,13 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
   }, [people, search, isSearching, activeGroup]);
 
   return (
-    <div className="safe-top" style={{ width: isMobile ? 'min(300px, 84vw)' : 300, flexShrink:0, background:'white', borderRight:'1px solid #EAEAE8', display:'flex', flexDirection:'column', height:'100%' }}>
+    <div className="safe-top" style={{ width: isMobile ? 'min(300px, 84vw)' : 300, flexShrink:0, background:'var(--surface)', borderRight:'1px solid var(--border)', display:'flex', flexDirection:'column', height:'100%' }}>
       {/* Header */}
       <div style={{ padding:'18px 16px 12px' }}>
         {isMobile && (
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:4 }}>
             <button onClick={onCloseDrawer} aria-label="Close menu"
-              style={{ background:'none', border:'none', cursor:'pointer', color:'#9ca3af', padding:4 }}>
+              style={{ background:'none', border:'none', cursor:'pointer', color:'var(--faint)', padding:4 }}>
               <Icon name="x" size={20} color="currentColor" />
             </button>
           </div>
@@ -2128,21 +2158,21 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
             style={{ background:'none', border:'none', cursor:'pointer', padding:0, textAlign:'left', transition:'opacity 0.15s' }}
             onMouseEnter={e=>e.currentTarget.style.opacity='0.75'}
             onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
-            <div style={{ fontSize:22, fontWeight:900, color:'#DC5A1A', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
-            <div style={{ fontSize:11, color:'#9ca3af', marginTop:2, letterSpacing:'0.03em' }}>Remember what matters</div>
-            {saveStatus === 'saving'  && <div style={{ fontSize:10, color:'#F26B1D', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#F26B1D', animation:'pulse 1s infinite' }}></span>Saving…</div>}
+            <div style={{ fontSize:22, fontWeight:900, color:'var(--accent-strong)', letterSpacing:'-0.5px', lineHeight:1 }}>▶ Resume</div>
+            <div style={{ fontSize:11, color:'var(--faint)', marginTop:2, letterSpacing:'0.03em' }}>Remember what matters</div>
+            {saveStatus === 'saving'  && <div style={{ fontSize:10, color:'var(--accent)', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'var(--accent)', animation:'pulse 1s infinite' }}></span>Saving…</div>}
             {saveStatus === 'pending' && <div style={{ fontSize:10, color:'#f59e0b', marginTop:2, display:'flex', alignItems:'center', gap:3 }}><span style={{ display:'inline-block', width:6, height:6, borderRadius:'50%', background:'#f59e0b' }}></span>Unsaved changes</div>}
           </button>
           <div style={{ display:'flex', gap:6 }}>
             <button onClick={onQuickCapture} title="Quick capture"
-              style={{ width:34, height:34, borderRadius:10, background:'#FDF1E7', border:'1px solid #F6CBA3', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s' }}
-              onMouseEnter={e=>{ e.currentTarget.style.background='#FBE2CE'; e.currentTarget.style.transform='scale(1.05)'; }}
-              onMouseLeave={e=>{ e.currentTarget.style.background='#FDF1E7'; e.currentTarget.style.transform='scale(1)'; }}>
-              <Icon name="pen" size={15} color="#F26B1D" />
+              style={{ width:34, height:34, borderRadius:10, background:'var(--accent-soft)', border:'1px solid var(--accent-border)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.1s' }}
+              onMouseEnter={e=>{ e.currentTarget.style.background='var(--accent-soft-2)'; e.currentTarget.style.transform='scale(1.05)'; }}
+              onMouseLeave={e=>{ e.currentTarget.style.background='var(--accent-soft)'; e.currentTarget.style.transform='scale(1)'; }}>
+              <Icon name="pen" size={15} color="var(--accent)" />
             </button>
             <div ref={addRef} style={{ position:'relative' }}>
               <button onClick={()=>setAddMenu(m=>!m)} title="Add"
-                style={{ width:34, height:34, borderRadius:10, background:'#F26B1D', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(242,107,29,0.35)', transition:'transform 0.1s' }}
+                style={{ width:34, height:34, borderRadius:10, background:'var(--accent)', border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(242,107,29,0.35)', transition:'transform 0.1s' }}
                 onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'}
                 onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
                 <Icon name="plus" size={18} color="white" />
@@ -2176,23 +2206,23 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
         {/* Search bar */}
         <div style={{ position:'relative' }}>
           <span style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}>
-            <Icon name="search" size={14} color={isSearching?'#F26B1D':'#9ca3af'} />
+            <Icon name="search" size={14} color={isSearching?'var(--accent)':'var(--faint)'} />
           </span>
           <input value={search} onChange={e=>setSearch(e.target.value)}
             placeholder="Search names, places, topics…"
-            style={{ width:'100%', padding:'8px 30px 8px 32px', border:`1px solid ${isSearching?'#F6CBA3':'#EAEAE8'}`, borderRadius:8, fontSize:13, background: isSearching?'#FDF1E7':'#F7F6F3', color:'#374151', transition:'all 0.15s' }} />
+            style={{ width:'100%', padding:'8px 30px 8px 32px', border:`1px solid ${isSearching?'var(--accent-border)':'var(--border)'}`, borderRadius:8, fontSize:13, background: isSearching?'var(--accent-soft)':'var(--bg)', color:'var(--text)', transition:'all 0.15s' }} />
           {isSearching && (
             <button onClick={()=>setSearch('')}
-              style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'#9ca3af', display:'flex', alignItems:'center', padding:2 }}
-              onMouseEnter={e=>e.currentTarget.style.color='#374151'}
-              onMouseLeave={e=>e.currentTarget.style.color='#9ca3af'}>
+              style={{ position:'absolute', right:8, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', cursor:'pointer', color:'var(--faint)', display:'flex', alignItems:'center', padding:2 }}
+              onMouseEnter={e=>e.currentTarget.style.color='var(--text)'}
+              onMouseLeave={e=>e.currentTarget.style.color='var(--faint)'}>
               <Icon name="x" size={13} color="currentColor" />
             </button>
           )}
         </div>
         {/* Search hint */}
         {!isSearching && (
-          <p style={{ fontSize:11, color:'#d1d5db', marginTop:5, textAlign:'center' }}>
+          <p style={{ fontSize:11, color:'var(--faintest)', marginTop:5, textAlign:'center' }}>
             Search by location, topic, hobby, any detail you remember
           </p>
         )}
@@ -2200,7 +2230,7 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
 
       {/* Group filter chips */}
       {allGroups.length > 0 && (
-        <div style={{ padding:'8px 14px 10px', borderBottom:'1px solid #F7F6F3', overflowX:'auto' }}>
+        <div style={{ padding:'8px 14px 10px', borderBottom:'1px solid var(--bg)', overflowX:'auto' }}>
           <div style={{ display:'flex', gap:5, flexWrap:'nowrap' }}>
             <Chip active={!activeGroup} onClick={()=>setActiveGroup(null)}>All</Chip>
             {allGroups.map(g => (
@@ -2212,10 +2242,10 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
 
       {/* Stats + sort — only shown when not searching */}
       {!isSearching && (
-        <div style={{ padding:'4px 16px 8px', borderBottom:'1px solid #F7F6F3', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-          <span style={{ fontSize:12, color:'#9ca3af' }}>{people.length} contact{people.length!==1?'s':''}</span>
+        <div style={{ padding:'4px 16px 8px', borderBottom:'1px solid var(--bg)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+          <span style={{ fontSize:12, color:'var(--faint)' }}>{people.length} contact{people.length!==1?'s':''}</span>
           <select value={sortBy} onChange={e=>setSortBy(e.target.value)}
-            style={{ fontSize:12, color:'#6b7280', border:'none', background:'transparent', cursor:'pointer', outline:'none' }}>
+            style={{ fontSize:12, color:'var(--text-soft)', border:'none', background:'transparent', cursor:'pointer', outline:'none' }}>
             <option value="recent">Recent first</option>
             <option value="name">A – Z</option>
             <option value="attention">Needs attention</option>
@@ -2238,7 +2268,7 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
         ) : (
           <>
             {filtered.length === 0 && (
-              <p style={{ fontSize:14, color:'#9ca3af', textAlign:'center', marginTop:40 }}>No contacts yet</p>
+              <p style={{ fontSize:14, color:'var(--faint)', textAlign:'center', marginTop:40 }}>No contacts yet</p>
             )}
             {filtered.map(p => {
               const st = getStatus(p);
@@ -2247,8 +2277,8 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
               return (
                 <div key={p.id} className="person-row"
                   onClick={() => onSelect(p.id)}
-                  style={{ padding:'9px 10px', borderRadius:10, cursor:'pointer', marginBottom:2, background: sel ? '#FDF1E7' : 'transparent', display:'flex', alignItems:'center', gap:10 }}
-                  onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='#F7F6F3'; }}
+                  style={{ padding:'9px 10px', borderRadius:10, cursor:'pointer', marginBottom:2, background: sel ? 'var(--accent-soft)' : 'transparent', display:'flex', alignItems:'center', gap:10 }}
+                  onMouseEnter={e=>{ if(!sel) e.currentTarget.style.background='var(--bg)'; }}
                   onMouseLeave={e=>{ if(!sel) e.currentTarget.style.background='transparent'; }}>
                   <div style={{ position:'relative', flexShrink:0 }}>
                     <Avatar name={p.name} size={38} />
@@ -2257,8 +2287,8 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
                     )}
                   </div>
                   <div style={{ flex:1, minWidth:0 }}>
-                    <p style={{ fontSize:14, fontWeight:600, color:'#111827', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</p>
-                    <p style={{ fontSize:12, color:'#9ca3af', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginTop:1 }}>
+                    <p style={{ fontSize:14, fontWeight:600, color:'var(--text-strong)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{p.name}</p>
+                    <p style={{ fontSize:12, color:'var(--faint)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis', marginTop:1 }}>
                       {last ? fmt(last) : (p.company || 'No conversations yet')}
                     </p>
                   </div>
@@ -2270,25 +2300,31 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
       </div>
 
       {/* Footer: signed-in email + settings + sign out */}
-      <div className="safe-bottom" style={{ borderTop:'1px solid #EAEAE8', padding:'8px 10px' }}>
+      <div className="safe-bottom" style={{ borderTop:'1px solid var(--border)', padding:'8px 10px' }}>
         {userEmail && (
-          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 6px 8px', fontSize:11, color:'#9ca3af', overflow:'hidden' }}>
-            <Icon name="user" size={12} color="#9ca3af" />
+          <div style={{ display:'flex', alignItems:'center', gap:6, padding:'2px 6px 8px', fontSize:11, color:'var(--faint)', overflow:'hidden' }}>
+            <Icon name="user" size={12} color="var(--faint)" />
             <span style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{userEmail}</span>
           </div>
         )}
         <div style={{ display:'flex', gap:6 }}>
+          <button onClick={onToggleTheme} title={theme==='dark' ? 'Switch to light mode' : 'Switch to night mode'}
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', width:38, padding:'9px', borderRadius:9, border:'1px solid var(--border-strong)', background:'var(--surface)', cursor:'pointer', flexShrink:0 }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'}
+            onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}>
+            <Icon name={theme==='dark' ? 'sun' : 'moon'} size={15} color="var(--text-soft)" />
+          </button>
           <button onClick={onOpenSettings} title="Settings & reminders"
-            style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
-            onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
-            onMouseLeave={e=>e.currentTarget.style.background='white'}>
-            <Icon name="settings" size={15} color="#6b7280" />Settings
+            style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px', borderRadius:9, border:'1px solid var(--border-strong)', background:'var(--surface)', cursor:'pointer', fontSize:13, fontWeight:600, color:'var(--text)' }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'}
+            onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}>
+            <Icon name="settings" size={15} color="var(--text-soft)" />Settings
           </button>
           <button onClick={onLock} title="Sign out"
-            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px 14px', borderRadius:9, border:'1px solid #E3E2DF', background:'white', cursor:'pointer', fontSize:13, fontWeight:600, color:'#374151' }}
-            onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
-            onMouseLeave={e=>e.currentTarget.style.background='white'}>
-            <Icon name="logout" size={15} color="#6b7280" />Sign out
+            style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:7, padding:'9px 12px', borderRadius:9, border:'1px solid var(--border-strong)', background:'var(--surface)', cursor:'pointer', fontSize:13, fontWeight:600, color:'var(--text)' }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'}
+            onMouseLeave={e=>e.currentTarget.style.background='var(--surface)'}>
+            <Icon name="logout" size={15} color="var(--text-soft)" />Sign out
           </button>
         </div>
       </div>
@@ -2298,17 +2334,17 @@ const Sidebar = ({ people, selectedId, onSelect, onAddPerson, onBulkAdd, onLogGr
 
 /* ── Dashboard Sub-components ─────────────────────────────────────────────── */
 const StatCard = ({ icon, label, value, trend, accent }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'16px 18px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+  <div style={{ background:'var(--surface)', borderRadius:12, padding:'16px 18px', border:'1px solid var(--border)', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
     <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
       <span style={{ fontSize:22 }}>{icon}</span>
       {trend !== undefined && trend !== 0 && (
-        <span style={{ fontSize:12, color: trend>0?'#10b981':'#9ca3af', fontWeight:700, background: trend>0?'#f0fdf4':'#F7F6F3', padding:'2px 7px', borderRadius:99 }}>
+        <span style={{ fontSize:12, color: trend>0?'#10b981':'var(--faint)', fontWeight:700, background: trend>0?'#f0fdf4':'var(--bg)', padding:'2px 7px', borderRadius:99 }}>
           {trend>0?'↑':''}{trend>0?`+${trend}`:`${trend}`} mo
         </span>
       )}
     </div>
-    <p style={{ fontSize:30, fontWeight:900, color: accent||'#111827', lineHeight:1, marginBottom:4 }}>{value}</p>
-    <p style={{ fontSize:12, color:'#9ca3af' }}>{label}</p>
+    <p style={{ fontSize:30, fontWeight:900, color: accent||'var(--text-strong)', lineHeight:1, marginBottom:4 }}>{value}</p>
+    <p style={{ fontSize:12, color:'var(--faint)' }}>{label}</p>
   </div>
 );
 
@@ -2320,9 +2356,9 @@ const BUCKETS = [
 ];
 
 const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
-    <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:2 }}>Time to catch up</h3>
-    <p style={{ fontSize:12, color:'#9ca3af', marginBottom:16 }}>
+  <div style={{ background:'var(--surface)', borderRadius:12, padding:'18px 20px', border:'1px solid var(--border)', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+    <h3 style={{ fontSize:14, fontWeight:700, color:'var(--text-strong)', marginBottom:2 }}>Time to catch up</h3>
+    <p style={{ fontSize:12, color:'var(--faint)', marginBottom:16 }}>
       {catchupTotal > 0
         ? `${catchupTotal} contact${catchupTotal>1?'s':''} haven't heard from you in a while`
         : "Everyone's been heard from recently 🎉"}
@@ -2331,7 +2367,7 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
     {catchupTotal === 0 && (
       <div style={{ textAlign:'center', padding:'24px 0' }}>
         <div style={{ fontSize:32, marginBottom:8 }}>🎉</div>
-        <p style={{ fontSize:14, color:'#9ca3af' }}>All caught up!</p>
+        <p style={{ fontSize:14, color:'var(--faint)' }}>All caught up!</p>
       </div>
     )}
 
@@ -2343,7 +2379,7 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
           <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:7 }}>
             <span style={{ width:8, height:8, borderRadius:'50%', background:color, flexShrink:0 }} />
             <span style={{ fontSize:11, fontWeight:700, color, textTransform:'uppercase', letterSpacing:'0.06em' }}>{label}</span>
-            <span style={{ fontSize:11, color:'#9ca3af' }}>· {list.length}</span>
+            <span style={{ fontSize:11, color:'var(--faint)' }}>· {list.length}</span>
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:6 }}>
             {list.map(p => {
@@ -2358,15 +2394,15 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
                     onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.95)'}
                     onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
                     <Avatar name={p.name} size={22} />
-                    <span style={{ fontSize:13, color:'#374151', fontWeight:500 }}>{p.name}</span>
-                    <span style={{ fontSize:11, color:'#9ca3af' }}>{mo ? `${mo}mo` : 'never'}</span>
+                    <span style={{ fontSize:13, color:'var(--text)', fontWeight:500 }}>{p.name}</span>
+                    <span style={{ fontSize:11, color:'var(--faint)' }}>{mo ? `${mo}mo` : 'never'}</span>
                   </button>
                   <button onClick={() => onForgo(p.id)} title="No regular follow-up needed"
                     style={{ display:'flex', alignItems:'center', justifyContent:'center', width:20, height:20, marginRight:5,
                       background:'rgba(0,0,0,0.06)', border:'none', borderRadius:'50%', cursor:'pointer',
-                      color:'#9ca3af', fontSize:11, lineHeight:1, transition:'all 0.1s', flexShrink:0 }}
-                    onMouseEnter={e=>{ e.currentTarget.style.background='rgba(0,0,0,0.15)'; e.currentTarget.style.color='#374151'; }}
-                    onMouseLeave={e=>{ e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='#9ca3af'; }}>
+                      color:'var(--faint)', fontSize:11, lineHeight:1, transition:'all 0.1s', flexShrink:0 }}
+                    onMouseEnter={e=>{ e.currentTarget.style.background='rgba(0,0,0,0.15)'; e.currentTarget.style.color='var(--text)'; }}
+                    onMouseLeave={e=>{ e.currentTarget.style.background='rgba(0,0,0,0.06)'; e.currentTarget.style.color='var(--faint)'; }}>
                     ×
                   </button>
                 </div>
@@ -2376,19 +2412,19 @@ const CatchUpSection = ({ buckets, catchupTotal, onSelect, onForgo }) => (
         </div>
       );
     })}
-    <p style={{ fontSize:11, color:'#d1d5db', marginTop:12 }}>× removes someone from this list — use when regular check-ins aren't needed. Contacts auto-drop after 15 months.</p>
+    <p style={{ fontSize:11, color:'var(--faintest)', marginTop:12 }}>× removes someone from this list — use when regular check-ins aren't needed. Contacts auto-drop after 15 months.</p>
   </div>
 );
 
 const UpcomingSection = ({ upcoming, onSelect }) => (
-  <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
-    <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:16 }}>Scheduled Events — next 30 days</h3>
+  <div style={{ background:'var(--surface)', borderRadius:12, padding:'18px 20px', border:'1px solid var(--border)', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+    <h3 style={{ fontSize:14, fontWeight:700, color:'var(--text-strong)', marginBottom:16 }}>Scheduled Events — next 30 days</h3>
 
     {upcoming.length === 0 ? (
       <div style={{ textAlign:'center', padding:'20px 0' }}>
         <div style={{ fontSize:28, marginBottom:8 }}>📅</div>
-        <p style={{ fontSize:13, color:'#9ca3af' }}>No upcoming meetings logged</p>
-        <p style={{ fontSize:11, color:'#d1d5db', marginTop:4, lineHeight:'1.4' }}>
+        <p style={{ fontSize:13, color:'var(--faint)' }}>No upcoming meetings logged</p>
+        <p style={{ fontSize:11, color:'var(--faintest)', marginTop:4, lineHeight:'1.4' }}>
           Set a "Next planned contact" date<br/>when logging a conversation
         </p>
       </div>
@@ -2396,20 +2432,20 @@ const UpcomingSection = ({ upcoming, onSelect }) => (
       upcoming.map((c, i) => {
         const meetDate = new Date(c.nextMeeting + 'T12:00:00');
         const daysUntil = Math.ceil((meetDate - new Date(new Date().setHours(0,0,0,0))) / 86400000);
-        const urgency = daysUntil <= 2 ? '#ef4444' : daysUntil <= 7 ? '#f59e0b' : '#9ca3af';
+        const urgency = daysUntil <= 2 ? '#ef4444' : daysUntil <= 7 ? '#f59e0b' : 'var(--faint)';
         return (
           <div key={i}
             onClick={() => onSelect(c.person.id)}
             style={{ display:'flex', gap:12, padding:'10px 10px', borderRadius:8, cursor:'pointer',
-              background: i%2===0 ? '#F7F6F3' : 'white', marginBottom:4, transition:'background 0.1s' }}
-            onMouseEnter={e=>e.currentTarget.style.background='#EDEDEC'}
-            onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'#F7F6F3':'white'}>
+              background: i%2===0 ? 'var(--bg)' : 'white', marginBottom:4, transition:'background 0.1s' }}
+            onMouseEnter={e=>e.currentTarget.style.background='var(--border)'}
+            onMouseLeave={e=>e.currentTarget.style.background=i%2===0?'var(--bg)':'white'}>
             {/* Date block */}
             <div style={{ textAlign:'center', minWidth:38, flexShrink:0, paddingTop:2 }}>
-              <p style={{ fontSize:10, fontWeight:800, color:'#F26B1D', textTransform:'uppercase', letterSpacing:'0.05em', lineHeight:1 }}>
+              <p style={{ fontSize:10, fontWeight:800, color:'var(--accent)', textTransform:'uppercase', letterSpacing:'0.05em', lineHeight:1 }}>
                 {meetDate.toLocaleDateString('en-US',{month:'short'})}
               </p>
-              <p style={{ fontSize:22, fontWeight:900, color:'#DC5A1A', lineHeight:1.1 }}>
+              <p style={{ fontSize:22, fontWeight:900, color:'var(--accent-strong)', lineHeight:1.1 }}>
                 {meetDate.getDate()}
               </p>
             </div>
@@ -2417,9 +2453,9 @@ const UpcomingSection = ({ upcoming, onSelect }) => (
             <div style={{ flex:1, minWidth:0 }}>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:2 }}>
                 <Avatar name={c.person.name} size={18} />
-                <span style={{ fontSize:13, fontWeight:600, color:'#111827' }}>{c.person.name}</span>
+                <span style={{ fontSize:13, fontWeight:600, color:'var(--text-strong)' }}>{c.person.name}</span>
               </div>
-              {c.nextMeetingNote && <p style={{ fontSize:12, color:'#6b7280', lineHeight:'1.4' }}>{c.nextMeetingNote}</p>}
+              {c.nextMeetingNote && <p style={{ fontSize:12, color:'var(--text-soft)', lineHeight:'1.4' }}>{c.nextMeetingNote}</p>}
               <p style={{ fontSize:11, color:urgency, fontWeight:500, marginTop:2 }}>
                 {daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`}
               </p>
@@ -2434,23 +2470,23 @@ const UpcomingSection = ({ upcoming, onSelect }) => (
 const RecentSection = ({ recent, onSelect }) => {
   if (!recent.length) return null;
   return (
-    <div style={{ background:'white', borderRadius:12, padding:'18px 20px', border:'1px solid #EDEDEC', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
-      <h3 style={{ fontSize:14, fontWeight:700, color:'#111827', marginBottom:16 }}>Recent conversations</h3>
+    <div style={{ background:'var(--surface)', borderRadius:12, padding:'18px 20px', border:'1px solid var(--border)', boxShadow:'0 1px 3px rgba(0,0,0,0.05)' }}>
+      <h3 style={{ fontSize:14, fontWeight:700, color:'var(--text-strong)', marginBottom:16 }}>Recent conversations</h3>
       {recent.map((c, i) => (
         <div key={i}
           onClick={() => onSelect(c.person.id)}
           style={{ display:'flex', alignItems:'flex-start', gap:12, padding:'10px 8px',
-            borderTop: i>0 ? '1px solid #F7F6F3' : 'none', cursor:'pointer', borderRadius:8, marginLeft:-8, marginRight:-8,
+            borderTop: i>0 ? '1px solid var(--bg)' : 'none', cursor:'pointer', borderRadius:8, marginLeft:-8, marginRight:-8,
             transition:'background 0.1s' }}
-          onMouseEnter={e=>e.currentTarget.style.background='#F7F6F3'}
+          onMouseEnter={e=>e.currentTarget.style.background='var(--bg)'}
           onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
           <Avatar name={c.person.name} size={36} />
           <div style={{ flex:1, minWidth:0 }}>
             <div style={{ display:'flex', alignItems:'baseline', flexWrap:'wrap', gap:'4px 10px', marginBottom:4 }}>
-              <span style={{ fontSize:14, fontWeight:600, color:'#111827' }}>{c.person.name}</span>
-              <span style={{ fontSize:12, color:'#9ca3af' }}>{fmt(c.date)}</span>
+              <span style={{ fontSize:14, fontWeight:600, color:'var(--text-strong)' }}>{c.person.name}</span>
+              <span style={{ fontSize:12, color:'var(--faint)' }}>{fmt(c.date)}</span>
               {c.location && (
-                <span style={{ fontSize:12, color:'#9ca3af', display:'flex', alignItems:'center', gap:3 }}>
+                <span style={{ fontSize:12, color:'var(--faint)', display:'flex', alignItems:'center', gap:3 }}>
                   📍 {c.location}
                 </span>
               )}
@@ -2458,7 +2494,7 @@ const RecentSection = ({ recent, onSelect }) => {
             {c.topics?.length > 0 && (
               <div style={{ display:'flex', flexWrap:'wrap', gap:4 }}>
                 {c.topics.map(t => (
-                  <span key={t} style={{ padding:'1px 7px', background:'#EDEDEC', borderRadius:99, fontSize:11, color:'#6b7280' }}>{t}</span>
+                  <span key={t} style={{ padding:'1px 7px', background:'var(--border)', borderRadius:99, fontSize:11, color:'var(--text-soft)' }}>{t}</span>
                 ))}
               </div>
             )}
@@ -2563,7 +2599,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
           <button style={navBtn} onClick={prevMonth}
             onMouseEnter={e=>e.currentTarget.style.background=T.bg}
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>‹</button>
-          <span style={{ fontSize:13, fontWeight:600, color:'#374151', minWidth:130, textAlign:'center' }}>{monthLabel}</span>
+          <span style={{ fontSize:13, fontWeight:600, color:'var(--text)', minWidth:130, textAlign:'center' }}>{monthLabel}</span>
           <button style={navBtn} onClick={nextMonth}
             onMouseEnter={e=>e.currentTarget.style.background=T.bg}
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>›</button>
@@ -2573,7 +2609,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
       {/* Day-of-week headers */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(7,1fr)', gap:2, marginBottom:3 }}>
         {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
-          <div key={d} style={{ textAlign:'center', fontSize:10, fontWeight:700, color:'#c4c8d4', paddingBottom:4, letterSpacing:'0.04em' }}>{d}</div>
+          <div key={d} style={{ textAlign:'center', fontSize:10, fontWeight:700, color:'var(--faintest)', paddingBottom:4, letterSpacing:'0.04em' }}>{d}</div>
         ))}
       </div>
 
@@ -2610,7 +2646,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
                 }}
                 onMouseEnter={e=>{ if(!isToday) e.currentTarget.style.background = hasEvt?T.accentSoft2:T.bg; }}
                 onMouseLeave={e=>{ if(!isToday&&!isPopOpen) e.currentTarget.style.background = hasEvt?T.accentSoft:'transparent'; }}>
-                <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday?700:400, color:isToday?'white':hasEvt?T.accentDeep:'#374151' }}>{day}</span>
+                <span style={{ fontSize:12, lineHeight:1, fontWeight:isToday?700:400, color:isToday?'white':hasEvt?T.accentDeep:'var(--text)' }}>{day}</span>
                 {types.length > 0 && (
                   <div style={{ display:'flex', gap:2, marginTop:2 }}>
                     {types.slice(0,3).map(t => (
@@ -2638,8 +2674,8 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
                       onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                       <span style={{ width:7, height:7, borderRadius:'50%', background:EVT_COLOR[ev.type], flexShrink:0 }} />
                       <div>
-                        <p style={{ fontSize:12, fontWeight:600, color:'#111827', lineHeight:1.3 }}>{ev.sub}</p>
-                        <p style={{ fontSize:11, color:'#9ca3af', lineHeight:1.3 }}>{ev.label}</p>
+                        <p style={{ fontSize:12, fontWeight:600, color:'var(--text-strong)', lineHeight:1.3 }}>{ev.sub}</p>
+                        <p style={{ fontSize:11, color:'var(--faint)', lineHeight:1.3 }}>{ev.label}</p>
                       </div>
                     </button>
                   ))}
@@ -2664,7 +2700,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
         {[['event','Event'],['meeting','Meeting'],['birthday','Birthday']].map(([t,l]) => (
           <div key={t} style={{ display:'flex', alignItems:'center', gap:5 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:EVT_COLOR[t], flexShrink:0 }} />
-            <span style={{ fontSize:10, color:'#9ca3af' }}>{l}</span>
+            <span style={{ fontSize:10, color:'var(--faint)' }}>{l}</span>
           </div>
         ))}
       </div>
@@ -2685,11 +2721,11 @@ const BirthdaySection = ({ people, onSelect }) => {
   if (!upcoming.length) return null;
 
   return (
-    <div style={{ background:'white', borderRadius:12, padding:'16px 20px', border:'1px solid #fed7aa', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
+    <div style={{ background:'var(--surface)', borderRadius:12, padding:'16px 20px', border:'1px solid #fed7aa', boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
         <span style={{ fontSize:18 }}>🎂</span>
-        <h3 style={{ fontSize:14, fontWeight:700, color:'#111827' }}>Upcoming birthdays</h3>
-        <span style={{ fontSize:12, color:'#9ca3af' }}>within the next 30 days</span>
+        <h3 style={{ fontSize:14, fontWeight:700, color:'var(--text-strong)' }}>Upcoming birthdays</h3>
+        <span style={{ fontSize:12, color:'var(--faint)' }}>within the next 30 days</span>
       </div>
       <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
         {upcoming.map(({ person:p, days }) => (
@@ -2701,7 +2737,7 @@ const BirthdaySection = ({ people, onSelect }) => {
             onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
             <Avatar name={p.name} size={30} />
             <div>
-              <p style={{ fontSize:13, fontWeight:600, color:'#374151' }}>{p.name}</p>
+              <p style={{ fontSize:13, fontWeight:600, color:'var(--text)' }}>{p.name}</p>
               <p style={{ fontSize:11, fontWeight:500, color: days===0?'#dc2626':days<=3?'#ea580c':'#78716c' }}>
                 {days===0 ? '🎉 Today!' : days===1 ? 'Tomorrow!' : `${fmtBday(p.birthday)} · in ${days} days`}
               </p>
@@ -2771,7 +2807,7 @@ const CommitmentsSection = ({ people, onSelect, onToggle, onSetOwner }) => {
         {isDone && <Icon name="check" size={12} color="white" />}
       </button>
       <div style={{ flex:1, minWidth:0 }}>
-        <p style={{ fontSize:13, color: isDone ? T.faint : '#111827', lineHeight:1.4, textDecoration: isDone ? 'line-through' : 'none' }}>{it.text}</p>
+        <p style={{ fontSize:13, color: isDone ? T.faint : 'var(--text-strong)', lineHeight:1.4, textDecoration: isDone ? 'line-through' : 'none' }}>{it.text}</p>
         <button onClick={()=>onSelect(it.person.id)}
           style={{ display:'inline-flex', alignItems:'center', gap:5, marginTop:3, background:'none', border:'none', padding:0, cursor:'pointer' }}>
           <Avatar name={it.person.name} size={16} />
@@ -2795,7 +2831,7 @@ const CommitmentsSection = ({ people, onSelect, onToggle, onSetOwner }) => {
     <div style={{ background:T.surface, borderRadius:12, padding:'16px 20px', border:`1px solid ${T.accentBorder}`, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
         <span style={{ fontSize:16 }}>✅</span>
-        <h3 style={{ fontSize:14, fontWeight:700, color:'#111827' }}>Your commitments</h3>
+        <h3 style={{ fontSize:14, fontWeight:700, color:'var(--text-strong)' }}>Your commitments</h3>
         <span style={{ fontSize:12, color:T.faint }}>things you said you'd do</span>
         {open.length > 0 && (
           <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color:T.accentDeep, background:T.accentSoft, padding:'2px 9px', borderRadius:99 }}>{open.length} open</span>
@@ -2891,8 +2927,8 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
   if (people.length === 0) return (
     <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:40 }}>
       <div style={{ fontSize:52, marginBottom:16 }}>👥</div>
-      <h2 style={{ fontSize:20, fontWeight:700, color:'#374151', marginBottom:8 }}>Start building your network memory</h2>
-      <p style={{ fontSize:14, color:'#9ca3af', marginBottom:20 }}>Add your first contact — or paste a whole list.</p>
+      <h2 style={{ fontSize:20, fontWeight:700, color:'var(--text)', marginBottom:8 }}>Start building your network memory</h2>
+      <p style={{ fontSize:14, color:'var(--faint)', marginBottom:20 }}>Add your first contact — or paste a whole list.</p>
       <div style={{ display:'flex', gap:8 }}>
         <Btn onClick={onAddPerson}>Add first contact</Btn>
         <Btn variant="secondary" onClick={onBulkAdd}><Icon name="users" size={14} color={T.textSoft} />Add multiple</Btn>
@@ -2903,7 +2939,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
   const headerBtn = (label, ic, fn, primary) => (
     <button onClick={fn}
       style={{ display:'inline-flex', alignItems:'center', gap:6, padding:'7px 12px', borderRadius:8, fontSize:13, fontWeight:600, cursor:'pointer',
-        background: primary ? T.accent : T.surface, color: primary ? 'white' : '#374151',
+        background: primary ? T.accent : T.surface, color: primary ? 'white' : 'var(--text)',
         border: primary ? 'none' : `1px solid ${T.borderStrong}`, transition:'filter 0.1s' }}
       onMouseEnter={e=>e.currentTarget.style.filter='brightness(0.97)'}
       onMouseLeave={e=>e.currentTarget.style.filter='brightness(1)'}>
@@ -2914,10 +2950,10 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
   return (
     <div style={{ flex:1, overflow:'hidden', display:'flex', flexDirection:'column' }}>
       {/* Header */}
-      <div className="r-pad r-actions" style={{ padding:'16px 28px', background:'white', borderBottom:'1px solid #EDEDEC', display:'flex', alignItems:'center', gap:12 }}>
+      <div className="r-pad r-actions" style={{ padding:'16px 28px', background:'var(--surface)', borderBottom:'1px solid var(--border)', display:'flex', alignItems:'center', gap:12 }}>
         <div style={{ flex:1, minWidth:160, display:'flex', alignItems:'baseline', gap:12 }}>
-          <h1 style={{ fontSize:20, fontWeight:800, color:'#111827' }}>Your Network</h1>
-          <span style={{ fontSize:13, color:'#9ca3af' }}>{greeting} — here's where things stand</span>
+          <h1 style={{ fontSize:20, fontWeight:800, color:'var(--text-strong)' }}>Your Network</h1>
+          <span style={{ fontSize:13, color:'var(--faint)' }}>{greeting} — here's where things stand</span>
         </div>
         <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
           {headerBtn('Event', 'calendar', () => onAddEvent(null))}
@@ -2935,7 +2971,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
           <StatCard icon="🔔" label="Overdue follow-ups" value={overdueCount}
             accent={overdueCount > 0 ? '#ef4444' : undefined} />
           <StatCard icon="📅" label="Upcoming meetings" value={upcoming.length}
-            accent={upcoming.length > 0 ? '#DC5A1A' : undefined} />
+            accent={upcoming.length > 0 ? 'var(--accent-strong)' : undefined} />
         </div>
 
         {/* Commitments / homework */}
@@ -2963,20 +2999,20 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
 /* ── App ──────────────────────────────────────────────────────────────────── */
 /* ── Loading / Error screens ──────────────────────────────────────────────── */
 const LoadingScreen = () => (
-  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, background:'#F7F6F3' }}>
+  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:16, background:'var(--bg)' }}>
     <div style={{ fontSize:36, animation:'spin 1.2s linear infinite', display:'inline-block' }}>⏳</div>
-    <p style={{ fontSize:15, fontWeight:700, color:'#374151' }}>Loading your network…</p>
-    <p style={{ fontSize:12, color:'#9ca3af' }}>Connecting to cloud storage</p>
+    <p style={{ fontSize:15, fontWeight:700, color:'var(--text)' }}>Loading your network…</p>
+    <p style={{ fontSize:12, color:'var(--faint)' }}>Connecting to cloud storage</p>
     <style>{`@keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }`}</style>
   </div>
 );
 
 const ErrorScreen = ({ error, onRetry }) => (
-  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:12, background:'#F7F6F3', padding:32 }}>
+  <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'100vh', gap:12, background:'var(--bg)', padding:32 }}>
     <div style={{ fontSize:40 }}>⚠️</div>
-    <p style={{ fontSize:16, fontWeight:700, color:'#374151' }}>Couldn't connect to cloud storage</p>
-    <p style={{ fontSize:13, color:'#6b7280', maxWidth:360, textAlign:'center', lineHeight:'1.55' }}>{error}</p>
-    <button onClick={onRetry} style={{ marginTop:8, padding:'9px 20px', background:'#F26B1D', color:'white', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer' }}>Retry</button>
+    <p style={{ fontSize:16, fontWeight:700, color:'var(--text)' }}>Couldn't connect to cloud storage</p>
+    <p style={{ fontSize:13, color:'var(--text-soft)', maxWidth:360, textAlign:'center', lineHeight:'1.55' }}>{error}</p>
+    <button onClick={onRetry} style={{ marginTop:8, padding:'9px 20px', background:'var(--accent)', color:'white', border:'none', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer' }}>Retry</button>
   </div>
 );
 
@@ -3070,7 +3106,7 @@ const BulkPersonModal = ({ onSave, onClose }) => {
             <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: followUpEnabled ? 12 : 0 }}>
               <div style={{ display:'flex', alignItems:'center', gap:8 }}>
                 <Icon name="bell" size={15} color={T.textSoft} />
-                <span style={{ fontSize:14, fontWeight:500, color:'#374151' }}>Follow-up reminder for all</span>
+                <span style={{ fontSize:14, fontWeight:500, color:'var(--text)' }}>Follow-up reminder for all</span>
               </div>
               <Toggle on={followUpEnabled} onChange={setFollowUpEnabled} />
             </div>
@@ -3171,6 +3207,9 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
 const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
+  const [theme, setTheme] = useState(getInitialTheme);
+  useEffect(() => { applyTheme(theme); try { localStorage.setItem('resume_theme', theme); } catch(e) {} }, [theme]);
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
   const [showSettings, setShowSettings] = useState(false);
   const [people, setPeople] = useState([]);
   const [cloudReady, setCloudReady] = useState(false); // true once initial load done
@@ -3486,6 +3525,7 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
       isMobile={isMobile}
       onCloseDrawer={() => setSidebarOpen(false)}
       userEmail={userEmail}
+      theme={theme} onToggleTheme={toggleTheme}
       search={search} setSearch={setSearch}
       sortBy={sortBy} setSortBy={setSortBy}
       saveStatus={saveStatus}
@@ -3631,11 +3671,11 @@ const AuthScreen = () => {
     setBusy(false);
   };
 
-  const inp = { width:'100%', padding:'12px 14px', border:`1px solid ${T.borderStrong}`, borderRadius:10, fontSize:16, color:T.text, background:'white', outline:'none' };
+  const inp = { width:'100%', padding:'12px 14px', border:`1px solid ${T.borderStrong}`, borderRadius:10, fontSize:16, color:T.text, background:'var(--surface)', outline:'none' };
   const title = mode === 'signup' ? 'Create your account' : mode === 'reset' ? 'Reset your password' : 'Sign in to Resume';
   const cta = mode === 'signup' ? 'Create account' : mode === 'reset' ? 'Send reset link' : 'Sign in';
   return (
-    <div className="safe-top safe-bottom" style={{ minHeight:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'linear-gradient(160deg,#FDF1E7,#F7F6F3)' }}>
+    <div className="safe-top safe-bottom" style={{ minHeight:'100%', display:'flex', alignItems:'center', justifyContent:'center', padding:20, background:'linear-gradient(160deg,var(--accent-soft),var(--bg))' }}>
       <div className="modal-box" style={{ width:'100%', maxWidth:380, background:T.surface, borderRadius:18, padding:'28px 24px', boxShadow:'0 20px 60px rgba(0,0,0,0.12)', border:`1px solid ${T.border}` }}>
         <div style={{ textAlign:'center', marginBottom:20 }}>
           <div style={{ width:54, height:54, borderRadius:14, background:T.accent, display:'inline-flex', alignItems:'center', justifyContent:'center', marginBottom:12 }}>
@@ -3689,14 +3729,14 @@ const AuthScreen = () => {
 /* ── Settings (account + notification preferences) ────────────────────────── */
 const SettingsField = ({ label, icon, children, hint }) => (
   <div>
-    <Label>{icon && <Icon name={icon} size={12} color="#9ca3af" style={{ marginRight:5, verticalAlign:'-1px' }} />}{label}</Label>
+    <Label>{icon && <Icon name={icon} size={12} color="var(--faint)" style={{ marginRight:5, verticalAlign:'-1px' }} />}{label}</Label>
     {children}
     {hint && <p style={{ fontSize:11, color:T.faint, marginTop:4 }}>{hint}</p>}
   </div>
 );
 const SettingsRow = ({ label, on, onChange }) => (
   <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0' }}>
-    <span style={{ fontSize:14, color:'#374151' }}>{label}</span>
+    <span style={{ fontSize:14, color:'var(--text)' }}>{label}</span>
     <Toggle on={on} onChange={onChange} />
   </div>
 );
