@@ -272,50 +272,62 @@ const SAMPLE = [];
 /* ── Supabase ─────────────────────────────────────────────────────────────── */
 const SUPABASE_URL  = 'https://mjrlpysiunnuaqjryoxp.supabase.co';
 const SUPABASE_KEY  = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qcmxweXNpdW5udWFxanJ5b3hwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA3MTU5MDYsImV4cCI6MjA5NjI5MTkwNn0.IC58eBRSREMDz8yM3mrkaSCuUftufgaei7PIh1zHbCk';
-const ROW_ID        = 'main';
 const TABLE         = 'resume_data';
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const LS_KEY = 'resume_local_backup';
+/* Per-account rows: each signed-in user owns one data row (id = their user id)
+   and one settings row (id = "<user id>::config"). 'main'/'config' are the old
+   shared rows, kept only as a one-time migration source. */
+const LEGACY_DATA_ID   = 'main';
+const dataRowId   = (uid) => uid;
+const configRowId = (uid) => uid + '::config';
 
-const lsSave = (people) => {
-  try { localStorage.setItem(LS_KEY, JSON.stringify(people)); } catch(e) {}
+const lsKey = (uid) => 'resume_backup::' + (uid || 'anon');
+const lsSave = (uid, people) => {
+  try { localStorage.setItem(lsKey(uid), JSON.stringify(people)); } catch(e) {}
 };
-const lsLoad = () => {
+const lsLoad = (uid) => {
   try {
-    const raw = localStorage.getItem(LS_KEY);
+    // Prefer this account's cache; fall back to the legacy single-device backup.
+    const raw = localStorage.getItem(lsKey(uid)) || localStorage.getItem('resume_local_backup');
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
   } catch(e) { return null; }
 };
 
-const loadFromCloud = async () => {
-  const { data, error } = await db.from(TABLE).select('data').eq('id', ROW_ID).maybeSingle();
+const loadFromCloud = async (uid) => {
+  const { data, error } = await db.from(TABLE).select('data').eq('id', dataRowId(uid)).maybeSingle();
   if (error) throw error;
   return data ? data.data : null;
 };
 
-const persistToCloud = async (people) => {
-  lsSave(people); // always mirror to localStorage immediately
-  const { error } = await db.from(TABLE).upsert({ id: ROW_ID, data: people });
+// One-time migration source: the old shared 'main' row (readable transitionally
+// per AUTH_SETUP.md). Returns null if unavailable.
+const loadLegacyCloud = async () => {
+  try {
+    const { data } = await db.from(TABLE).select('data').eq('id', LEGACY_DATA_ID).maybeSingle();
+    return data && Array.isArray(data.data) && data.data.length ? data.data : null;
+  } catch(e) { return null; }
+};
+
+const persistToCloud = async (uid, people) => {
+  lsSave(uid, people); // always mirror to localStorage immediately
+  const { error } = await db.from(TABLE).upsert({ id: dataRowId(uid), data: people });
   if (error) console.warn('Save error:', error.message);
 };
 
-/* ── App config (notification prefs) ──────────────────────────────────────────
-   Stored in the same table under a separate row (id='config') so settings sync
-   across devices. Access is protected by Supabase Auth + row-level security —
-   see AUTH_SETUP.md. */
-const CONFIG_ID = 'config';
+/* ── App config (notification prefs) — stored per account ─────────────────────
+   Access is protected by Supabase Auth + row-level security (see AUTH_SETUP.md). */
 const DEFAULT_NOTIFY = { enabled:false, email:'', phone:'', leadDays:2, channels:{ email:true, sms:true }, types:{ events:true, meetings:true, birthdays:true } };
-const loadConfig = async () => {
-  const { data, error } = await db.from(TABLE).select('data').eq('id', CONFIG_ID).maybeSingle();
+const loadConfig = async (uid) => {
+  const { data, error } = await db.from(TABLE).select('data').eq('id', configRowId(uid)).maybeSingle();
   if (error) throw error;
   return data ? data.data : null;
 };
-const persistConfig = async (config) => {
-  const { error } = await db.from(TABLE).upsert({ id: CONFIG_ID, data: config });
+const persistConfig = async (uid, config) => {
+  const { error } = await db.from(TABLE).upsert({ id: configRowId(uid), data: config });
   if (error) console.warn('Config save error:', error.message);
 };
 
@@ -3101,7 +3113,7 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
 };
 
 /* ── App ──────────────────────────────────────────────────────────────────── */
-const App = ({ config, saveConfig, onLock, userEmail }) => {
+const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false); // mobile drawer
   const [showSettings, setShowSettings] = useState(false);
@@ -3125,6 +3137,7 @@ const App = ({ config, saveConfig, onLock, userEmail }) => {
   const skipSave   = useRef(false); // true while applying a remote realtime update
   const peopleRef  = useRef(people); // always current for beforeunload
   const tokenRef   = useRef(null);   // current auth access token for the keepalive flush
+  const hadDataRef = useRef(false);  // true once we've loaded a non-empty set (guards against wiping)
   const [saveStatus, setSaveStatus] = useState('saved'); // 'saved' | 'pending' | 'saving'
 
   // Keep peopleRef in sync
@@ -3141,25 +3154,27 @@ const App = ({ config, saveConfig, onLock, userEmail }) => {
   const doLoad = () => {
     setLoadError(null);
     setCloudReady(false);
-    loadFromCloud()
-      .then(cloudData => {
+    loadFromCloud(userId)
+      .then(async (cloudData) => {
         skipSave.current = true;
 
         let people;
         if (cloudData && cloudData.length > 0) {
-          // Supabase has data — use it and keep localStorage in sync
+          // This account already has data in the cloud — use it.
           people = cloudData;
-          lsSave(cloudData);
+          lsSave(userId, cloudData);
+          hadDataRef.current = true;
         } else {
-          // Supabase returned nothing — fall back to localStorage backup
-          const local = lsLoad();
-          if (local) {
-            people = local;
-            // Re-write local data back to Supabase so cloud catches up
-            // (run after skipSave window so the debounce effect fires)
-            setTimeout(() => { persistToCloud(local); }, 900);
+          // Empty/new account row → migrate: legacy shared row first, then this
+          // device's local backup. Whatever we find is written up to the account row.
+          let seed = await loadLegacyCloud();
+          if (!seed) seed = lsLoad(userId);
+          if (seed && seed.length) {
+            people = seed;
+            hadDataRef.current = true;
+            setTimeout(() => { persistToCloud(userId, seed); }, 900); // after the skipSave window
           } else {
-            people = SAMPLE; // truly empty first run
+            people = SAMPLE; // genuinely new, empty account
           }
         }
 
@@ -3169,36 +3184,41 @@ const App = ({ config, saveConfig, onLock, userEmail }) => {
       })
       .catch(e  => { setLoadError(e.message || 'Unknown error'); });
   };
-  useEffect(() => { doLoad(); }, []);
+  useEffect(() => { if (userId) doLoad(); }, [userId]);
 
-  // Realtime subscription — push updates from other devices into local state
+  // Realtime subscription — push updates from this account's other devices
   useEffect(() => {
-    if (!cloudReady) return;
+    if (!cloudReady || !userId) return;
     const channel = db
       .channel('resume-sync')
       .on('postgres_changes', {
         event: 'UPDATE', schema: 'public', table: TABLE,
-        filter: `id=eq.${ROW_ID}`,
+        filter: `id=eq.${dataRowId(userId)}`,
       }, (payload) => {
         if (payload.new?.data) {
           skipSave.current = true;            // don't echo the change back
           setPeople(payload.new.data);
+          if (payload.new.data.length) hadDataRef.current = true;
           setSaveStatus('saved');
           setTimeout(() => { skipSave.current = false; }, 300);
         }
       })
       .subscribe();
     return () => { db.removeChannel(channel); };
-  }, [cloudReady]);
+  }, [cloudReady, userId]);
 
-  // Debounced cloud save — skipped when state came from a remote realtime event
+  // Debounced cloud save — skipped when state came from a remote realtime event.
+  // Safety: never write an empty set unless we've actually held data this session,
+  // so an unreadable/empty load can't silently wipe the account's cloud data.
   useEffect(() => {
     if (!cloudReady || skipSave.current) return;
+    if (peopleRef.current.length === 0 && !hadDataRef.current) return;
+    if (peopleRef.current.length > 0) hadDataRef.current = true;
     setSaveStatus('pending');
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSaveStatus('saving');
-      await persistToCloud(peopleRef.current);
+      await persistToCloud(userId, peopleRef.current);
       setSaveStatus('saved');
     }, 500);
     return () => clearTimeout(saveTimer.current);
@@ -3208,9 +3228,10 @@ const App = ({ config, saveConfig, onLock, userEmail }) => {
   useEffect(() => {
     const handleUnload = () => {
       if (!cloudReady || skipSave.current) return;
+      if (peopleRef.current.length === 0 && !hadDataRef.current) return;
       clearTimeout(saveTimer.current);
-      lsSave(peopleRef.current); // synchronous localStorage write always succeeds
-      fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${ROW_ID}`, {
+      lsSave(userId, peopleRef.current); // synchronous localStorage write always succeeds
+      fetch(`${SUPABASE_URL}/rest/v1/${TABLE}?id=eq.${dataRowId(userId)}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -3730,20 +3751,22 @@ const Root = () => {
     return () => sub.subscription.unsubscribe();
   }, []);
 
+  const userId = session?.user?.id;
+
   useEffect(() => {
-    if (!session) { setConfigReady(false); return; }
-    loadConfig()
+    if (!userId) { setConfigReady(false); return; }
+    loadConfig(userId)
       .then(c => { setConfig(c || { notify: { ...DEFAULT_NOTIFY } }); setConfigReady(true); })
       .catch(() => { setConfig({ notify: { ...DEFAULT_NOTIFY } }); setConfigReady(true); });
-  }, [session]);
+  }, [userId]);
 
-  const saveConfig = async (next) => { setConfig(next); await persistConfig(next); };
+  const saveConfig = async (next) => { setConfig(next); await persistConfig(userId, next); };
   const onLock = () => { db.auth.signOut(); };
 
   if (session === undefined) return <LoadingScreen />;
   if (!session) return <AuthScreen />;
   if (!configReady) return <LoadingScreen />;
-  return <App config={config} saveConfig={saveConfig} onLock={onLock} userEmail={session.user?.email} />;
+  return <App config={config} saveConfig={saveConfig} onLock={onLock} userEmail={session.user?.email} userId={userId} />;
 };
 
 ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
