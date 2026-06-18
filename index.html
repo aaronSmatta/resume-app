@@ -97,6 +97,13 @@ const { useState, useEffect, useMemo, useRef } = React;
 /* ── Utils ────────────────────────────────────────────────────────────────── */
 const uid = () => Math.random().toString(36).slice(2, 10);
 
+/* iOS home-screen (standalone) web apps won't raise the keyboard for a
+   programmatic focus — and a pre-focused field then ignores taps, so the user
+   can't type. Disable auto-focus in standalone so the first tap focuses fresh. */
+const IS_STANDALONE = (typeof navigator !== 'undefined' && navigator.standalone === true) ||
+  (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+const AUTOFOCUS = !IS_STANDALONE;
+
 /* Short, satisfying "task complete" chime — a quick rising major arpeggio
    synthesized with the Web Audio API (no asset needed). Played only when a
    commitment flips to done. */
@@ -796,7 +803,7 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
           {/* 1. Name */}
           <div>
             <Label>Name *</Label>
-            <Input value={f.name} onChange={e=>set('name',e.target.value)} placeholder="Full name" autoFocus />
+            <Input value={f.name} onChange={e=>set('name',e.target.value)} placeholder="Full name" autoFocus={AUTOFOCUS} />
           </div>
 
           {/* 2. Birthday */}
@@ -2044,7 +2051,7 @@ const QuickCapture = ({ people, onSaveConvToPersonId, onSavePerson, onUpdatePers
   const textRef = React.useRef(null);
   const recognitionRef = React.useRef(null);
 
-  React.useEffect(() => { setTimeout(() => textRef.current?.focus(), 50); }, []);
+  React.useEffect(() => { if (AUTOFOCUS) setTimeout(() => textRef.current?.focus(), 50); }, []);
 
   const toggleMic = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -3340,7 +3347,7 @@ const BulkPersonModal = ({ onSave, onClose }) => {
           <div>
             <Label>Names</Label>
             <p style={{ fontSize:12, color:T.faint, marginBottom:6 }}>One per line. Optionally add company and/or birthday, comma-separated: <span style={{ color:T.textSoft }}>Jane Doe, Stripe, 03/14</span></p>
-            <textarea value={text} onChange={e=>setText(e.target.value)} rows={8} autoFocus
+            <textarea value={text} onChange={e=>setText(e.target.value)} rows={8} autoFocus={AUTOFOCUS}
               placeholder={"Jane Doe, Stripe, 03/14\nMarcus Lee (Acme), March 2\nPriya Patel, , Dec 11\nSam Rivera\n…"}
               style={{ width:'100%', minHeight:150, maxHeight:'45vh', padding:'10px 12px', border:`1px solid ${T.borderStrong}`, borderRadius:8, fontSize:14, lineHeight:'1.6', resize:'vertical', color:T.text, background:T.surface, fontFamily:'inherit', boxSizing:'border-box', outline:'none', whiteSpace:'pre-wrap', overflowWrap:'anywhere' }} />
           </div>
@@ -3427,7 +3434,7 @@ const EventModal = ({ event, people=[], defaultDate, defaultParticipantIds=[], l
         <div style={{ padding:'20px 24px', overflowY:'auto', flex:1, display:'flex', flexDirection:'column', gap:16 }}>
           <div>
             <Label>What's the event?</Label>
-            <Input value={f.title} onChange={e=>set('title',e.target.value)} placeholder="e.g. Coffee catch-up, Dinner, Conference" autoFocus />
+            <Input value={f.title} onChange={e=>set('title',e.target.value)} placeholder="e.g. Coffee catch-up, Dinner, Conference" autoFocus={AUTOFOCUS} />
           </div>
           <div className="r-cols2" style={{ display:'grid', gridTemplateColumns:'1.3fr 1fr', gap:12 }}>
             <div>
@@ -3981,8 +3988,8 @@ const AuthScreen = () => {
           <p style={{ fontSize:13, color:T.textSoft, marginTop:6 }}>{title}</p>
         </div>
         <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus
-            autoComplete="email" placeholder="Email" style={inp}
+          <input type="email" value={email} onChange={e=>setEmail(e.target.value)} autoFocus={AUTOFOCUS}
+            autoComplete="email" inputMode="email" enterKeyHint={mode==='reset'?'send':'next'} placeholder="Email" style={inp}
             onKeyDown={e=>{ if(e.key==='Enter' && mode==='reset') go(); }} />
           {mode !== 'reset' && (
             <input type="password" value={pw} onChange={e=>setPw(e.target.value)}
