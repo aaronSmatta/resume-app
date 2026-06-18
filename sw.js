@@ -6,7 +6,7 @@
    - CDN libraries (React / Babel / Supabase JS): stale-while-revalidate so the
      app can boot without a network after the first load.
    - Supabase API / realtime: never intercepted — always hits the network. */
-const CACHE = 'resume-v1';
+const CACHE = 'resume-v2';
 const SHELL = [
   '/', '/index.html', '/manifest.webmanifest',
   '/icon-192.png', '/icon-512.png', '/icon-512-maskable.png', '/apple-touch-icon.png',
