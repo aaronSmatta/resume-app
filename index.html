@@ -913,7 +913,7 @@ const PersonModal = ({ person, people=[], onSave, onClose }) => {
 
 /* ── Conversation Modal ───────────────────────────────────────────────────── */
 const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lockedId=null, onSave, onClose }) => {
-  const blank = { id:uid(), date:new Date().toISOString().slice(0,10), location:'', topics:[], insights:'', openQuestions:[], followUps:[], notes:'', nextMeeting:'', nextMeetingNote:'' };
+  const blank = { id:uid(), date:new Date().toISOString().slice(0,10), location:'', topics:[], insights:'', openQuestions:[], followUps:[], prayerRequests:[], notes:'', nextMeeting:'', nextMeetingNote:'' };
   const [f, setF] = useState(conv || blank);
   const set = (k,v) => setF(prev=>({...prev,[k]:v}));
   const isEdit = !!conv?.id;
@@ -975,6 +975,12 @@ const ConvModal = ({ conv, personName, people=[], initialParticipantIds=[], lock
             <Label>Follow-ups & upcoming events</Label>
             <p style={{ fontSize:12, color:'var(--faint)', marginBottom:6 }}>Things to do, send, or check back on</p>
             <BulletList items={f.followUps} onChange={v=>set('followUps',v)} placeholder="Add follow-up..." />
+          </div>
+
+          <div>
+            <Label>🙏 Prayer requests</Label>
+            <p style={{ fontSize:12, color:'var(--faint)', marginBottom:6 }}>Anything they asked for prayer about, or that you want to pray over</p>
+            <BulletList items={f.prayerRequests||[]} onChange={v=>set('prayerRequests',v)} placeholder="Add a prayer request..." />
           </div>
 
           <div>
@@ -1161,6 +1167,15 @@ const ConvCard = ({ conv, onEdit, onDelete, onPatch }) => {
               Tap <b>Me / Them</b> to set who owns a task. Only “Me” tasks appear on your dashboard; “·auto” means it’s decided from the wording.
             </p>
           </Section>
+          <Section label="🙏 Prayer requests">
+            <EditableConvList
+              items={conv.prayerRequests} done={conv.answeredPrayers} marker="🙏" color="#8B5CF6"
+              placeholder="Add a prayer request…" addLabel="Add"
+              onChange={(arr)=>{ const keep = new Set(arr); onPatch(conv.id, { prayerRequests:arr, answeredPrayers:(conv.answeredPrayers||[]).filter(x=>keep.has(x)) }); }}
+              onToggleDone={(t)=>onPatch(conv.id, { answeredPrayers: toggleIn(conv.answeredPrayers, t) })}
+            />
+            <p style={{ fontSize:11, color:T.faint, marginTop:6 }}>Check one off when it’s been answered.</p>
+          </Section>
           {conv.notes && (
             <Section label="Notes">
               <p style={{ fontSize:14, color:'var(--text-soft)', fontStyle:'italic', margin:0 }}>{conv.notes}</p>
@@ -1242,7 +1257,7 @@ const ResumeCard = ({ person }) => {
 };
 
 /* ── Person Detail ────────────────────────────────────────────────────────── */
-const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv, onPatchConv, onSchedule, onEditEvent, onDeleteEvent }) => {
+const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, onDeletePerson, onAddConv, onEditConv, onDeleteConv, onPatchConv, onToggleAnsweredPrayer, onSchedule, onEditEvent, onDeleteEvent }) => {
   const sorted = [...(person.conversations||[])].sort((a,b)=>b.date.localeCompare(a.date));
   const partner = person.partnerId ? people.find(p=>p.id===person.partnerId) : null;
   const status = getStatus(person);
@@ -1259,6 +1274,15 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
     });
     (person.conversations||[]).forEach(c => { if (c.nextMeeting && c.nextMeeting >= todayStr) out.push({ kind:'meeting', id:c.id, date:c.nextMeeting, title:c.nextMeetingNote||'Catch-up' }); });
     return out.sort((a,b)=>a.date.localeCompare(b.date));
+  }, [person]);
+  // Active (unanswered) prayer requests across this contact's conversations
+  const prayers = useMemo(() => {
+    const out = [];
+    (person.conversations||[]).forEach(c => {
+      const ans = new Set(c.answeredPrayers||[]);
+      (c.prayerRequests||[]).forEach(text => { if (!ans.has(text)) out.push({ convId:c.id, date:c.date, text }); });
+    });
+    return out.sort((a,b)=>b.date.localeCompare(a.date));
   }, [person]);
   const allTopics = useMemo(() => {
     const counts = {};
@@ -1350,6 +1374,29 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
                   </div>
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {/* Prayer requests */}
+        {prayers.length > 0 && (
+          <div style={{ background:T.surface, borderRadius:12, padding:'14px 18px', border:'1px solid #DDD3F7', marginBottom:16 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
+              <span style={{ fontSize:15 }}>🙏</span>
+              <h3 style={{ fontSize:13, fontWeight:700, color:'var(--text-strong)' }}>Prayer requests</h3>
+              <span style={{ fontSize:12, color:T.faint }}>remember to pray for {person.name.split(' ')[0]}</span>
+            </div>
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {prayers.map((pr,i) => (
+                <div key={i} style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'8px 10px', background:T.bg, borderRadius:9, border:`1px solid ${T.border}` }}>
+                  <button onClick={()=>onToggleAnsweredPrayer(person.id, pr.convId, pr.text)} title="Mark answered"
+                    style={{ flexShrink:0, marginTop:1, width:17, height:17, borderRadius:5, cursor:'pointer', border:'1.5px solid #cbd5e1', background:'white', padding:0 }} />
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <p style={{ fontSize:13, color:'var(--text-strong)', lineHeight:1.4 }}>{pr.text}</p>
+                    <p style={{ fontSize:11, color:T.faint, marginTop:2 }}>{fmt(pr.date)}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -2976,8 +3023,86 @@ const CommitmentsSection = ({ people, onSelect, onToggle, onSetOwner }) => {
   );
 };
 
+/* ── Prayer requests across all conversations ─────────────────────────────── */
+const PRAYER = '#8B5CF6';
+const PRAYER_SOFT = '#F3F0FF';
+const PrayerSection = ({ people, onSelect, onToggleAnswered }) => {
+  const [showAnswered, setShowAnswered] = useState(false);
+  const { active, answered } = useMemo(() => {
+    const active = [], answered = [];
+    people.forEach(p => (p.conversations||[]).forEach(c => {
+      const ans = new Set(c.answeredPrayers||[]);
+      (c.prayerRequests||[]).forEach(text => {
+        const item = { person:p, convId:c.id, date:c.date, text };
+        (ans.has(text) ? answered : active).push(item);
+      });
+    }));
+    active.sort((a,b)=>b.date.localeCompare(a.date));
+    answered.sort((a,b)=>b.date.localeCompare(a.date));
+    return { active, answered };
+  }, [people]);
+
+  if (active.length === 0 && answered.length === 0) return null; // unobtrusive when unused
+
+  const Row = ({ it, isAnswered }) => (
+    <div style={{ display:'flex', alignItems:'flex-start', gap:10, padding:'9px 10px', borderRadius:9, background: isAnswered ? 'transparent' : T.surface, border:`1px solid ${isAnswered ? 'transparent' : T.border}` }}>
+      <button onClick={()=>onToggleAnswered(it.person.id, it.convId, it.text)} title={isAnswered ? 'Mark as still praying' : 'Mark answered'}
+        style={{ flexShrink:0, marginTop:1, width:18, height:18, borderRadius:5, cursor:'pointer',
+          border:`1.5px solid ${isAnswered ? PRAYER : '#cbd5e1'}`, background: isAnswered ? PRAYER : 'white',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:0 }}>
+        {isAnswered && <Icon name="check" size={12} color="white" />}
+      </button>
+      <div style={{ flex:1, minWidth:0 }}>
+        <p style={{ fontSize:13, color: isAnswered ? T.faint : 'var(--text-strong)', lineHeight:1.4, textDecoration: isAnswered ? 'line-through' : 'none' }}>{it.text}</p>
+        <button onClick={()=>onSelect(it.person.id)}
+          style={{ display:'inline-flex', alignItems:'center', gap:5, marginTop:3, background:'none', border:'none', padding:0, cursor:'pointer' }}>
+          <Avatar name={it.person.name} size={16} />
+          <span style={{ fontSize:11, color:T.textSoft, fontWeight:500 }}>{it.person.name}</span>
+          <span style={{ fontSize:11, color:T.faint }}>· {fmt(it.date)}</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ background:T.surface, borderRadius:12, padding:'16px 20px', border:`1px solid #DDD3F7`, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
+        <span style={{ fontSize:16 }}>🙏</span>
+        <h3 style={{ fontSize:14, fontWeight:700, color:'var(--text-strong)' }}>Prayer requests</h3>
+        <span style={{ fontSize:12, color:T.faint }}>people to pray for</span>
+        {active.length > 0 && (
+          <span style={{ marginLeft:'auto', fontSize:12, fontWeight:700, color:'#5B21B6', background:PRAYER_SOFT, padding:'2px 9px', borderRadius:99 }}>{active.length} active</span>
+        )}
+      </div>
+      {active.length === 0 ? (
+        <div style={{ textAlign:'center', padding:'16px 0' }}>
+          <p style={{ fontSize:13, color:T.textSoft }}>No active prayer requests right now. 🙏</p>
+        </div>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+          {active.map((it,i) => <Row key={'a'+i} it={it} isAnswered={false} />)}
+        </div>
+      )}
+      {answered.length > 0 && (
+        <div style={{ marginTop:10, paddingTop:10, borderTop:`1px solid ${T.border}` }}>
+          <button onClick={()=>setShowAnswered(s=>!s)}
+            style={{ display:'flex', alignItems:'center', gap:5, background:'none', border:'none', cursor:'pointer', color:T.faint, fontSize:12, fontWeight:600, padding:0 }}>
+            <Icon name={showAnswered ? 'chevD' : 'chevR'} size={13} color="currentColor" />
+            {answered.length} answered
+          </button>
+          {showAnswered && (
+            <div style={{ display:'flex', flexDirection:'column', gap:2, marginTop:6 }}>
+              {answered.map((it,i) => <Row key={'an'+i} it={it} isAnswered={true} />)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Dashboard ────────────────────────────────────────────────────────────── */
-const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onToggleCommitment, onSetCommitmentOwner, onForgo }) => {
+const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup, onAddEvent, onToggleCommitment, onSetCommitmentOwner, onToggleAnsweredPrayer, onForgo }) => {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
 
@@ -3091,6 +3216,9 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
 
         {/* Commitments / homework */}
         <CommitmentsSection people={people} onSelect={onSelectPerson} onToggle={onToggleCommitment} onSetOwner={onSetCommitmentOwner} />
+
+        {/* Prayer requests */}
+        <PrayerSection people={people} onSelect={onSelectPerson} onToggleAnswered={onToggleAnsweredPrayer} />
 
         {/* Calendar */}
         <CalendarSection people={people} onSelectPerson={onSelectPerson} onAddEvent={onAddEvent} />
@@ -3529,6 +3657,19 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
     }));
   };
 
+  // Mark/unmark a prayer request as answered
+  const toggleAnsweredPrayer = (personId, convId, text) => {
+    setPeople(prev => prev.map(p => {
+      if (p.id !== personId) return p;
+      return { ...p, conversations: (p.conversations||[]).map(c => {
+        if (c.id !== convId) return c;
+        const done = c.answeredPrayers || [];
+        const next = done.includes(text) ? done.filter(t=>t!==text) : [...done, text];
+        return { ...c, answeredPrayers: next };
+      }) };
+    }));
+  };
+
   // Explicitly set who owns a follow-up ('mine' | 'theirs' | undefined to clear)
   const setFollowUpOwner = (personId, convId, text, owner) => {
     setPeople(prev => prev.map(p => {
@@ -3692,6 +3833,7 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
           onEditConv={c => { setEditingConv(c); setShowConvModal(true); }}
           onDeleteConv={deleteConv}
           onPatchConv={patchConv}
+          onToggleAnsweredPrayer={toggleAnsweredPrayer}
           onSchedule={() => openAddEvent({ lockedId: selected.id })}
           onEditEvent={ev => { setEditingEvent({ event:{...ev, _participantIds: ev.groupId ? people.filter(p=>(p.events||[]).some(e=>e.groupId===ev.groupId)).map(p=>p.id) : [selected.id] }, lockedId:null }); setEventDefaults({ date:ev.date, participantIds:[], lockedId:null }); setShowEventModal(true); }}
           onDeleteEvent={deleteEvent}
@@ -3706,6 +3848,7 @@ const App = ({ config, saveConfig, onLock, userEmail, userId }) => {
           onAddEvent={(date) => openAddEvent({ date })}
           onToggleCommitment={toggleFollowUpDone}
           onSetCommitmentOwner={setFollowUpOwner}
+          onToggleAnsweredPrayer={toggleAnsweredPrayer}
           onForgo={forgoPerson}
         />
       );
