@@ -75,6 +75,7 @@
 
     /* ── Mobile / iPhone responsiveness ─────────────────────────────────────── */
     html, body, #root { height: 100%; }
+    html, body { max-width: 100%; overflow-x: hidden; }
     /* Honour the notch / home-indicator safe areas */
     .safe-top { padding-top: env(safe-area-inset-top); }
     .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
@@ -1345,7 +1346,7 @@ const PersonDetail = ({ person, people=[], onBack, onOpenPartner, onEditPerson, 
       </div>
 
       {/* Scrollable body */}
-      <div className="r-pad safe-bottom" style={{ flex:1, overflowY:'auto', padding:'20px 24px' }}>
+      <div className="r-pad safe-bottom" style={{ flex:1, overflowY:'auto', overflowX:'hidden', padding:'20px 24px' }}>
 
         {/* Resume Brief */}
         <ResumeCard person={person} />
@@ -2753,20 +2754,20 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
   for (let d=1; d<=daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
 
-  const navBtn = { background:'none', border:`1px solid ${T.borderStrong}`, borderRadius:6, width:26, height:26, cursor:'pointer', fontSize:14, color:T.textSoft, display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.1s' };
+  const navBtn = { background:'none', border:`1px solid ${T.borderStrong}`, borderRadius:6, width:26, height:26, flexShrink:0, cursor:'pointer', fontSize:14, color:T.textSoft, display:'flex', alignItems:'center', justifyContent:'center', transition:'background 0.1s' };
 
   return (
     <div style={{ background:T.surface, borderRadius:12, padding:'16px 20px', border:`1px solid ${T.border}`, boxShadow:'0 1px 3px rgba(0,0,0,0.05)', marginBottom:14 }}>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+      {/* Header — wraps on narrow screens so nothing spills past the edge */}
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, flexWrap:'wrap', marginBottom:14 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0 }}>
           <span style={{ fontSize:16 }}>📆</span>
           <h3 style={{ fontSize:14, fontWeight:700, color:T.text }}>Calendar</h3>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, flexShrink:0, marginLeft:'auto' }}>
           {onAddEvent && (
             <button onClick={()=>onAddEvent(null)} title="Schedule an event"
-              style={{ display:'inline-flex', alignItems:'center', gap:5, padding:'5px 10px', background:T.accentSoft, color:T.accentDeep, border:`1px solid ${T.accentBorder}`, borderRadius:7, fontSize:12, fontWeight:600, cursor:'pointer' }}
+              style={{ display:'inline-flex', alignItems:'center', gap:4, padding:'5px 9px', background:T.accentSoft, color:T.accentDeep, border:`1px solid ${T.accentBorder}`, borderRadius:7, fontSize:12, fontWeight:600, cursor:'pointer', flexShrink:0 }}
               onMouseEnter={e=>e.currentTarget.style.background=T.accentSoft2}
               onMouseLeave={e=>e.currentTarget.style.background=T.accentSoft}>
               <Icon name="plus" size={13} color={T.accent} />Event
@@ -2775,7 +2776,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
           <button style={navBtn} onClick={prevMonth}
             onMouseEnter={e=>e.currentTarget.style.background=T.bg}
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>‹</button>
-          <span style={{ fontSize:13, fontWeight:600, color:'var(--text)', minWidth:130, textAlign:'center' }}>{monthLabel}</span>
+          <span style={{ fontSize:13, fontWeight:600, color:'var(--text)', minWidth:96, textAlign:'center', whiteSpace:'nowrap' }}>{monthLabel}</span>
           <button style={navBtn} onClick={nextMonth}
             onMouseEnter={e=>e.currentTarget.style.background=T.bg}
             onMouseLeave={e=>e.currentTarget.style.background='transparent'}>›</button>
@@ -2837,7 +2838,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
                 <div onClick={e=>e.stopPropagation()}
                   style={{ position:'absolute', top:'calc(100% + 4px)', left:'50%', transform:'translateX(-50%)',
                     zIndex:200, background:T.surface, borderRadius:10, boxShadow:'0 6px 24px rgba(0,0,0,0.14)',
-                    border:`1px solid ${T.borderStrong}`, minWidth:200, padding:'4px 0', whiteSpace:'nowrap' }}>
+                    border:`1px solid ${T.borderStrong}`, minWidth:160, maxWidth:'74vw', padding:'4px 0' }}>
                   {/* Arrow */}
                   <div style={{ position:'absolute', top:-5, left:'50%', transform:'translateX(-50%) rotate(45deg)',
                     width:9, height:9, background:T.surface, border:`1px solid ${T.borderStrong}`, borderBottom:'none', borderRight:'none' }} />
@@ -2872,7 +2873,7 @@ const CalendarSection = ({ people, onSelectPerson, onAddEvent }) => {
       </div>
 
       {/* Legend */}
-      <div style={{ display:'flex', gap:14, marginTop:12, paddingTop:10, borderTop:`1px solid ${T.border}`, justifyContent:'flex-end' }}>
+      <div style={{ display:'flex', gap:14, marginTop:12, paddingTop:10, borderTop:`1px solid ${T.border}`, justifyContent:'flex-end', flexWrap:'wrap' }}>
         {[['event','Event'],['meeting','Meeting'],['birthday','Birthday']].map(([t,l]) => (
           <div key={t} style={{ display:'flex', alignItems:'center', gap:5 }}>
             <span style={{ width:7, height:7, borderRadius:'50%', background:EVT_COLOR[t], flexShrink:0 }} />
@@ -3221,7 +3222,7 @@ const Dashboard = ({ people, onSelectPerson, onAddPerson, onBulkAdd, onLogGroup,
         </div>
       </div>
 
-      <div className="r-pad safe-bottom" style={{ flex:1, overflowY:'auto', padding:'20px 28px' }}>
+      <div className="r-pad safe-bottom" style={{ flex:1, overflowY:'auto', overflowX:'hidden', padding:'20px 28px' }}>
         {/* Stats row */}
         <div className="r-stats" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:12, marginBottom:18 }}>
           <StatCard icon="👥" label="New contacts (30d)" value={newContacts30} trend={newContacts30 - newContactsPrev30} />
