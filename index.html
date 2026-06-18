@@ -56,6 +56,12 @@
     input, textarea, select { font-family: inherit; }
     input:focus, textarea:focus, select:focus { outline: none; }
     textarea { resize: vertical; }
+    /* iOS standalone: make sure form fields stay selectable/editable and tappable
+       (some iOS versions inherit user-select:none / callout rules in PWA mode). */
+    input, textarea, select, [contenteditable="true"] {
+      -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
+      touch-action: manipulation;
+    }
     /* Subtle orange focus ring for a cohesive modern feel */
     input:focus, textarea:focus { border-color: var(--accent-border) !important; box-shadow: 0 0 0 3px rgba(242,107,29,0.18); }
     .modal-bg { animation: fadeBg 0.15s ease; backdrop-filter: blur(2px); }
@@ -103,6 +109,7 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const IS_STANDALONE = (typeof navigator !== 'undefined' && navigator.standalone === true) ||
   (typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
 const AUTOFOCUS = !IS_STANDALONE;
+const BUILD_TAG = 'build kbd-fix2'; // visible on the login screen to confirm the live version
 
 /* Short, satisfying "task complete" chime — a quick rising major arpeggio
    synthesized with the Web Audio API (no asset needed). Played only when a
@@ -4024,6 +4031,9 @@ const AuthScreen = () => {
         <p style={{ fontSize:10.5, color:T.faint, textAlign:'center', marginTop:16, lineHeight:1.5 }}>
           Secured by Supabase Auth. Your contacts sync across phone and computer. First-time setup steps are in AUTH_SETUP.md.
         </p>
+        <p style={{ fontSize:10, color:T.faint, textAlign:'center', marginTop:8, opacity:0.7 }}>
+          {BUILD_TAG}{IS_STANDALONE ? ' · home-screen' : ''}
+        </p>
       </div>
     </div>
   );
@@ -4187,7 +4197,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(<Root />);
   /* Register the service worker for home-screen / offline support (skips file://). */
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('/sw.js').catch(function () {});
+      navigator.serviceWorker.register('/sw.js').then(function (reg) {
+        reg.update();
+        // When a new service worker takes control, reload once to run fresh code.
+        var reloaded = false;
+        navigator.serviceWorker.addEventListener('controllerchange', function () {
+          if (reloaded) return; reloaded = true; window.location.reload();
+        });
+      }).catch(function () {});
     });
   }
 </script>
